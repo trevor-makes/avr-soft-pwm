@@ -4,9 +4,30 @@
 #include "uCLI.hpp"
 
 #include <Arduino.h>
+//#include <avr/interrupt.h>
 
 // This tutorial is a good resource to mention
 //https://raw.githubusercontent.com/abcminiuser/avr-tutorials/master/Timers/Output/Timers.pdf
+
+// TODO variadic template?
+template <typename Port0, typename Port1, typename Port2>
+struct PortExtend {
+  using TYPE = uint32_t;
+
+  // Select write mode for all ports
+  static inline void config_output() {
+    Port2::config_output();
+    Port1::config_output();
+    Port0::config_output();
+  }
+
+  // Write 16-bit value to high and low ports
+  static inline void write(TYPE value) {
+    Port2::write((value >> 16) & 0xFF);
+    Port1::write((value >> 8) & 0xFF);
+    Port0::write(value & 0xFF);
+  }
+};
 
 using uCLI::StreamEx;
 using uCLI::Args;
@@ -39,32 +60,27 @@ class SoftwarePWM {
 
 public:
   template <uint8_t C = 0, typename T>
-  static void config(uint8_t zone, T chan_bit) {
-    //static_assert(C + 1 == CHANNELS, "number of parameters must equal number of channels");
+  static void config(uint8_t zone, T index) {
     static_assert(C < CHANNELS, "too many channel parameters");
-    channels[zone * CHANNELS + C].bit = 1 << chan_bit;
+    channels[zone * CHANNELS + C].bit = TYPE(1) << index;
     channels[zone * CHANNELS + C].value = 0;
   }
 
   template <uint8_t C = 0, typename T, typename... Var>
-  static void config(uint8_t zone, T chan_bit, const Var... var) {
-    //static_assert(sizeof...(Var) + C + 1 == CHANNELS, "number of parameters must equal number of channels");
-    //channels[zone * CHANNELS + C].bit = 1 << chan_bit;
-    //channels[zone * CHANNELS + C].value = 0;
-    config<C>(zone, chan_bit);
+  static void config(uint8_t zone, T index, const Var... var) {
+    config<C>(zone, index);
     config<C + 1, Var...>(zone, var...);
   }
 
   template <uint8_t C = 0, typename T>
-  static void set(uint8_t zone, T chan_val) {
-    static_assert(C + 1 == CHANNELS, "number of parameters must equal number of channels");
-    channels[zone * CHANNELS + C].value = chan_val;
+  static void set(uint8_t zone, T val) {
+    static_assert(C < CHANNELS, "too many channel parameters");
+    channels[zone * CHANNELS + C].value = val;
   }
 
   template <uint8_t C = 0, typename T, typename... Var>
-  static void set(uint8_t zone, T chan_val, const Var... var) {
-    static_assert(sizeof...(Var) + C + 1 == CHANNELS, "number of parameters must equal number of channels");
-    channels[zone * CHANNELS + C].value = chan_val;
+  static void set(uint8_t zone, T val, const Var... var) {
+    set<C>(zone, val);
     set<C + 1, Var...>(zone, var...);
   }
 
@@ -173,43 +189,39 @@ using RegCS2 = RegTCCR2B::Mask<0x07>;
 using RegWGM2 = uIO::PortJoin<RegTCCR2A::Mask<0x03>, RegTCCR2B::Mask<0x08>>; // TODO port shift
 using BitOCIE2A = RegTIMSK2::Bit<OCIE2A>;
 
-using PortsBC = uIO::Port16<uIO::PortB, uIO::PortC>;
-using PWM = SoftwarePWM<PortsBC, RegOCR2A, 4, 3>;
+using PWMPins = PortExtend<uIO::PortB, uIO::PortC, uIO::PortD::Mask<0xFC>>;
+using PWM = SoftwarePWM<PWMPins, RegOCR2A, 6, 3>;
 
-uint8_t timer_delay = 1;
+void empty_fn() {}
 
-void toggle_fn() {
-  RegOCR2A::write(timer_delay);
-  uIO::PortD::Bit<2>::set();
-  uIO::PortD::Bit<2>::clear();
-}
+void (*isr_fn)() = empty_fn;
 
-void (*isr_fn)() = toggle_fn;
-
-//#include <avr/interrupt.h>
 ISR(TIMER2_COMPA_vect) {
   isr_fn();
 }
 
 void setup() {
-  PortsBC::config_output();
+  PWMPins::config_output();
 
   // set zone#, r bit, g bit, b bit
   PWM::config(0, 1, 2, 0);
   PWM::config(1, 4, 5, 3);
   PWM::config(2, 9, 10, 8);
   PWM::config(3, 12, 13, 11);
+  PWM::config(4, 19, 20, 18);
+  PWM::config(5, 22, 23, 21);
 
   PWM::set(0, 255, 0, 0);
   PWM::set(1, 0, 255, 0);
   PWM::set(2, 0, 0, 255);
-  PWM::set(3, 63, 127, 191);
+  PWM::set(3, 255, 0, 255);
+  PWM::set(4, 0, 255, 255);
+  PWM::set(5, 255, 255, 0);
 
   PWM::update();
 
-  uIO::PortD::Bit<2>::config_output();
   RegWGM2::write(2); // enable CTC mode
-  RegOCR2A::write(timer_delay); // output compare value
+  RegOCR2A::write(1); // output compare value
   RegCOM2A::write(0); // disconnect OC2A output
   BitOCIE2A::set(); // enable output compare interrupt
   RegCS2::write(6); // clk/256 prescaler
@@ -240,7 +252,7 @@ void pulse() {
   PWM::update();
 }
 
-uCLI::IdleFn idle_fn = pulse;
+uCLI::IdleFn idle_fn = nullptr;
 
 void do_pulse(uCLI::Args) {
   idle_fn = pulse;
