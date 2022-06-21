@@ -152,11 +152,16 @@ public:
     }
   }
 
-  static void diag(uCLI::Args) {
+  static void debug(uCLI::Args) {
     for (auto cursor = front; cursor != nullptr; cursor = cursor->next) {
-      serialEx.print(cursor->delay);
-      serialEx.print(", ");
-      serialEx.println(cursor->bits, BIN);
+      // Print the value of each output bit this frame
+      serialEx.print(cursor->bits, BIN);
+      serialEx.print(" for ");
+      // Print duty cycle of this frame (ticks * 100 / 255)
+      // NOTE [>> 8 or / 256] is much faster and close enough to [/ 255]
+      uint16_t ticks = cursor->delay + 1;
+      serialEx.print((ticks * 100 + 127) >> 8);
+      serialEx.println("%");
     }
   }
 };
@@ -192,45 +197,57 @@ using BitOCIE2A = RegTIMSK2::Bit<OCIE2A>;
 using PWMPins = PortExtend<uIO::PortB, uIO::PortC, uIO::PortD::Mask<0xFC>>;
 using PWM = SoftwarePWM<PWMPins, RegOCR2A, 6, 3>;
 
-void empty_fn() {}
-
-void (*isr_fn)() = empty_fn;
-
+// Hook PWM routine into timer 2 compare interrupt
 ISR(TIMER2_COMPA_vect) {
-  isr_fn();
+  PWM::isr();
 }
 
 void setup() {
   PWMPins::config_output();
 
-  // set zone#, r bit, g bit, b bit
-  PWM::config(0, 1, 2, 0);
-  PWM::config(1, 4, 5, 3);
-  PWM::config(2, 9, 10, 8);
-  PWM::config(3, 12, 13, 11);
-  PWM::config(4, 19, 20, 18);
-  PWM::config(5, 22, 23, 21);
+  // Configure mapping from zone/channel to bit within port register
+  PWM::config(0,  8 + 4,  8 + 5,  8 + 3); // C4, C5, C3
+  PWM::config(1,  8 + 1,  8 + 2,  8 + 0); // C1, C2, C0
+  PWM::config(2, 16 + 6, 16 + 7, 16 + 5); // D6, D7, D5
+  PWM::config(3,  0 + 4,  0 + 5,  0 + 3); // B4, B5, B3
+  PWM::config(4,  0 + 1,  0 + 2,  0 + 0); // B1, B2, B0
+  PWM::config(5, 16 + 3, 16 + 4, 16 + 2); // D3, D4, D2
 
-  PWM::set(0, 255, 0, 0);
-  PWM::set(1, 0, 255, 0);
-  PWM::set(2, 0, 0, 255);
-  PWM::set(3, 255, 0, 255);
-  PWM::set(4, 0, 255, 255);
-  PWM::set(5, 255, 255, 0);
-
+  // Set RGB value (duty cycle) to default gradient
+  PWM::set(0, 255, 0, 191);
+  PWM::set(1, 191, 0, 63);
+  PWM::set(2, 191, 31, 63);
+  PWM::set(3, 191, 63, 63);
+  PWM::set(4, 255, 63, 15);
+  PWM::set(5, 255, 31, 0);
   PWM::update();
 
+  // Configure hardware timer 2
   RegWGM2::write(2); // enable CTC mode
-  RegOCR2A::write(1); // output compare value
   RegCOM2A::write(0); // disconnect OC2A output
   BitOCIE2A::set(); // enable output compare interrupt
-  RegCS2::write(6); // clk/256 prescaler
-
-  isr_fn = PWM::isr;
+  RegCS2::write(4); // clk/64 prescaler
 
   // Establish serial connection with computer
   Serial.begin(9600);
   while (!Serial) {}
+}
+
+void do_pulse(uCLI::Args);
+void set_rgb(uCLI::Args);
+void set_scale(uCLI::Args);
+
+uCLI::IdleFn idle_fn = nullptr;
+
+void loop() {
+  static const uCLI::Command commands[] = {
+    { "pulse", do_pulse },
+    { "set", set_rgb },
+    { "debug", PWM::debug },
+    { "scale", set_scale },
+  };
+
+  serialCli.run_once(commands, idle_fn);
 }
 
 void pulse() {
@@ -252,8 +269,6 @@ void pulse() {
   PWM::update();
 }
 
-uCLI::IdleFn idle_fn = nullptr;
-
 void do_pulse(uCLI::Args) {
   idle_fn = pulse;
 }
@@ -271,15 +286,4 @@ void set_rgb(uCLI::Args args) {
 void set_scale(uCLI::Args args) {
   uint8_t scale = atoi(args.next());
   RegCS2::write(scale);
-}
-
-void loop() {
-  static const uCLI::Command commands[] = {
-    { "pulse", do_pulse },
-    { "set", set_rgb },
-    { "diag", PWM::diag },
-    { "scale", set_scale },
-  };
-
-  serialCli.run_once(commands, idle_fn);
 }
