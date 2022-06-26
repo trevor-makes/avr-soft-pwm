@@ -11,23 +11,34 @@
 // This tutorial is a good resource to mention
 //https://raw.githubusercontent.com/abcminiuser/avr-tutorials/master/Timers/Output/Timers.pdf
 
-// TODO variadic template?
-template <typename Port0, typename Port1, typename Port2>
-struct PortExtend {
+template <typename TYPE1, typename TYPE2>
+struct TypeExtend;
+
+template <>
+struct TypeExtend<uint8_t, uint8_t> {
+  using TYPE = uint16_t;
+};
+
+template <>
+struct TypeExtend<uint16_t, uint16_t> {
   using TYPE = uint32_t;
+};
+
+template <typename Port0, typename Port1>
+struct PortExtend {
+  using TYPE = typename TypeExtend<typename Port0::TYPE, typename Port1::TYPE>::TYPE;
 
   // Select write mode for all ports
   static inline void config_output() {
-    Port2::config_output();
     Port1::config_output();
     Port0::config_output();
   }
 
   // Write 16-bit value to high and low ports
   static inline void write(TYPE value) {
-    Port2::write((value >> 16) & 0xFF);
-    Port1::write((value >> 8) & 0xFF);
-    Port0::write(value & 0xFF);
+    constexpr uint8_t shift = sizeof(typename Port0::TYPE) * 8;
+    Port1::write(value >> shift);
+    Port0::write(value);
   }
 };
 
@@ -46,7 +57,10 @@ using RegCS2 = RegTCCR2B::Mask<0x07>;
 using RegWGM2 = uIO::PortJoin<RegTCCR2A::Mask<0x03>, RegTCCR2B::Mask<0x08>>; // TODO port shift
 using BitOCIE2A = RegTIMSK2::Bit<OCIE2A>;
 
-using PWMPins = PortExtend<uIO::PortB, uIO::PortC, uIO::PortD::Mask<0xFC>>;
+//using PWMPins = PortExtend<uIO::PortB, uIO::PortC, uIO::PortD::Mask<0xFC>>;
+using PWMPins = PortExtend<
+  PortExtend<uIO::PortB, uIO::PortC>,
+  PortExtend<uIO::PortD::Mask<0xFC>, uIO::PortNull<>>>;
 using PWM = SoftwarePWM<PWMPins, RegOCR2A, 6, 3>;
 
 // Hook PWM routine into timer 2 compare interrupt
