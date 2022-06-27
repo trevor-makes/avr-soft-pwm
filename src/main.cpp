@@ -24,7 +24,7 @@ struct TypeExtend<uint16_t, uint16_t> {
   using TYPE = uint32_t;
 };
 
-template <typename Port0, typename Port1>
+template <typename Port0, typename Port1 = uIO::PortNull<typename Port0::TYPE>>
 struct PortExtend {
   using TYPE = typename TypeExtend<typename Port0::TYPE, typename Port1::TYPE>::TYPE;
 
@@ -57,10 +57,9 @@ using RegCS2 = RegTCCR2B::Mask<0x07>;
 using RegWGM2 = uIO::PortJoin<RegTCCR2A::Mask<0x03>, RegTCCR2B::Mask<0x08>>; // TODO port shift
 using BitOCIE2A = RegTIMSK2::Bit<OCIE2A>;
 
-//using PWMPins = PortExtend<uIO::PortB, uIO::PortC, uIO::PortD::Mask<0xFC>>;
 using PWMPins = PortExtend<
   PortExtend<uIO::PortB, uIO::PortC>,
-  PortExtend<uIO::PortD::Mask<0xFC>, uIO::PortNull<>>>;
+  PortExtend<uIO::PortD::Mask<0xFC>>>;
 using PWM = SoftwarePWM<PWMPins, RegOCR2A, 6, 3>;
 
 // Hook PWM routine into timer 2 compare interrupt
