@@ -11,48 +11,6 @@
 // This tutorial is a good resource to mention
 //https://raw.githubusercontent.com/abcminiuser/avr-tutorials/master/Timers/Output/Timers.pdf
 
-namespace util {
-
-template <typename>
-struct extend_unsigned;
-
-template <>
-struct extend_unsigned<uint8_t> {
-  using type = uint16_t;
-};
-
-template <>
-struct extend_unsigned<uint16_t> {
-  using type = uint32_t;
-};
-
-template <>
-struct extend_unsigned<uint32_t> {
-  using type = uint64_t;
-};
-
-} // namespace util
-
-template <typename Port0, typename Port1 = uIO::PortNull<typename Port0::TYPE>>
-struct PortExtend {
-  static_assert(util::is_same<typename Port0::TYPE, typename Port1::TYPE>::value,
-    "Can only extend pairs of same type");
-  using TYPE = typename util::extend_unsigned<typename Port0::TYPE>::type;
-
-  // Select write mode for all ports
-  static inline void config_output() {
-    Port1::config_output();
-    Port0::config_output();
-  }
-
-  // Write 16-bit value to high and low ports
-  static inline void write(TYPE value) {
-    constexpr uint8_t shift = sizeof(typename Port0::TYPE) * 8;
-    Port1::write(value >> shift);
-    Port0::write(value);
-  }
-};
-
 using uCLI::StreamEx;
 using uCLI::Args;
 StreamEx serialEx(Serial);
@@ -68,9 +26,9 @@ using RegCS2 = RegTCCR2B::Mask<0x07>;
 using RegWGM2 = uIO::PortJoin<RegTCCR2A::Mask<0x03>, RegTCCR2B::Mask<0x08>>; // TODO port shift
 using BitOCIE2A = RegTIMSK2::Bit<OCIE2A>;
 
-using PWMPins = PortExtend<
-  PortExtend<uIO::PortB, uIO::PortC>,
-  PortExtend<uIO::PortD::Mask<0xFC>>>;
+using PWMPins = uIO::Extend<
+  uIO::Extend<uIO::PortB, uIO::PortC>,
+  uIO::Extend<uIO::PortD::Mask<0xFC>>>;
 using PWM = SoftwarePWM<PWMPins, RegOCR2A, 6, 3>;
 
 // Hook PWM routine into timer 2 compare interrupt
