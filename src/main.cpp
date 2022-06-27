@@ -11,22 +11,33 @@
 // This tutorial is a good resource to mention
 //https://raw.githubusercontent.com/abcminiuser/avr-tutorials/master/Timers/Output/Timers.pdf
 
-template <typename TYPE1, typename TYPE2>
-struct TypeExtend;
+namespace util {
+
+template <typename>
+struct extend_unsigned;
 
 template <>
-struct TypeExtend<uint8_t, uint8_t> {
-  using TYPE = uint16_t;
+struct extend_unsigned<uint8_t> {
+  using type = uint16_t;
 };
 
 template <>
-struct TypeExtend<uint16_t, uint16_t> {
-  using TYPE = uint32_t;
+struct extend_unsigned<uint16_t> {
+  using type = uint32_t;
 };
+
+template <>
+struct extend_unsigned<uint32_t> {
+  using type = uint64_t;
+};
+
+} // namespace util
 
 template <typename Port0, typename Port1 = uIO::PortNull<typename Port0::TYPE>>
 struct PortExtend {
-  using TYPE = typename TypeExtend<typename Port0::TYPE, typename Port1::TYPE>::TYPE;
+  static_assert(util::is_same<typename Port0::TYPE, typename Port1::TYPE>::value,
+    "Can only extend pairs of same type");
+  using TYPE = typename util::extend_unsigned<typename Port0::TYPE>::type;
 
   // Select write mode for all ports
   static inline void config_output() {
