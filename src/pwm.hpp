@@ -90,8 +90,7 @@ public:
       }
     }
     // Accumulate turned-off bits and delays between events
-    //TYPE output = PORT::MASK; // TODO Port/Port16 don't export the underlying register mask
-    TYPE output = ~0; // start with all bits set
+    TYPE output = PORT::MASK;
     uint8_t elapsed = 0;
     for (auto cursor = back; /*see break*/; cursor = cursor->next) {
       // Turn off selected bits

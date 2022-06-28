@@ -26,10 +26,12 @@ using RegCS2 = RegTCCR2B::Mask<0x07>;
 using RegWGM2 = uIO::Overlay<RegTCCR2A::Mask<0x03>, uIO::RightShift<RegTCCR2B::Mask<0x08>, 1>>;
 using BitOCIE2A = RegTIMSK2::Bit<OCIE2A>;
 
+const auto ZONES = 6;
+const auto CHANNELS = 3;
 using PWMPins = uIO::Extend<
   uIO::Extend<uIO::PortB, uIO::PortC>,
   uIO::Extend<uIO::PortD::Mask<0xFC>>>;
-using PWM = SoftwarePWM<PWMPins, RegOCR2A, 6, 3>;
+using PWM = SoftwarePWM<PWMPins, RegOCR2A, ZONES, CHANNELS>;
 
 // Hook PWM routine into timer 2 compare interrupt
 ISR(TIMER2_COMPA_vect) {
@@ -88,6 +90,7 @@ void loop() {
 void debug_pwm(uCLI::Args) {
   PWM::for_each<>([](PWMEvent<PWM::TYPE>* event) {
     // Print the value of each output bit this frame
+    // TODO fix the leading zeros so bits line up vertically
     serialEx.print(event->bits, BIN);
     serialEx.print(" for ");
     // Print duty cycle of this frame (ticks * 100 / 255)
