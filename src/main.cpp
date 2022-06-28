@@ -21,9 +21,9 @@ uIO_REG(TCCR2B)
 uIO_REG(TIMSK2)
 uIO_REG(OCR2A)
 
-using RegCOM2A = RegTCCR2A::Mask<0xC0>; // TODO port shift
+using RegCOM2A = uIO::RightShift<RegTCCR2A::Mask<0xC0>, 6>;
 using RegCS2 = RegTCCR2B::Mask<0x07>;
-using RegWGM2 = uIO::PortJoin<RegTCCR2A::Mask<0x03>, RegTCCR2B::Mask<0x08>>; // TODO port shift
+using RegWGM2 = uIO::Overlay<RegTCCR2A::Mask<0x03>, uIO::RightShift<RegTCCR2B::Mask<0x08>, 1>>;
 using BitOCIE2A = RegTIMSK2::Bit<OCIE2A>;
 
 using PWMPins = uIO::Extend<
