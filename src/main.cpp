@@ -8,38 +8,6 @@
 #include <Arduino.h>
 //#include <avr/interrupt.h>
 
-// std c++20 in <bit>
-//http://graphics.stanford.edu/~seander/bithacks.html#ZerosOnRightParallel
-template <typename T>
-constexpr uint8_t countr_zero(T v) {
-  return sizeof(T) * 8
-    - ((v & -v) ? 1 : 0)
-    - ((v & -v & 0x00000000FFFFFFFF) && sizeof(T) > 4 ? 32 : 0)
-    - ((v & -v & 0x0000FFFF0000FFFF) && sizeof(T) > 2 ? 16 : 0)
-    - ((v & -v & 0x00FF00FF00FF00FF) && sizeof(T) > 1 ? 8 : 0)
-    - ((v & -v & 0x0F0F0F0F0F0F0F0F) ? 4 : 0)
-    - ((v & -v & 0x3333333333333333) ? 2 : 0)
-    - ((v & -v & 0x5555555555555555) ? 1 : 0);
-}
-
-static_assert(countr_zero(uint8_t(0)) == 8);
-static_assert(countr_zero(uint16_t(0)) == 16);
-static_assert(countr_zero(uint32_t(0)) == 32);
-static_assert(countr_zero(uint64_t(0)) == 64);
-static_assert(countr_zero(1) == 0);
-static_assert(countr_zero(0x10) == 4);
-static_assert(countr_zero(0x100) == 8);
-static_assert(countr_zero(0x1000) == 12);
-static_assert(countr_zero(0x8000) == 15);
-static_assert(countr_zero(0x80000000) == 31);
-static_assert(countr_zero(0x8000000000000000) == 63);
-static_assert(countr_zero(0xF0F0F0F0) == 4);
-
-template <typename PORT>
-using RightAlign = uIO::RightShift<PORT, countr_zero(PORT::MASK)>;
-
-static_assert(RightAlign<RegTCCR2A::Mask<0xC0>>::MASK == 0x03);
-
 // This tutorial is a good resource to mention
 //https://raw.githubusercontent.com/abcminiuser/avr-tutorials/master/Timers/Output/Timers.pdf
 
@@ -53,7 +21,7 @@ uIO_REG(TCCR2B)
 uIO_REG(TIMSK2)
 uIO_REG(OCR2A)
 
-using RegCOM2A = RightAlign<RegTCCR2A::Mask<0xC0>>;
+using RegCOM2A = uIO::RightAlign<RegTCCR2A::Mask<0xC0>>;
 using RegCS2 = RegTCCR2B::Mask<0x07>;
 using RegWGM2 = uIO::Overlay<RegTCCR2A::Mask<0x03>, uIO::RightShift<RegTCCR2B::Mask<0x08>, 1>>;
 using BitOCIE2A = RegTIMSK2::Bit<OCIE2A>;
