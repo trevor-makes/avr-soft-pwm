@@ -23,14 +23,14 @@ uIO_REG(OCR2A)
 
 using RegCOM2A = uIO::RightAlign<RegTCCR2A::Mask<0xC0>>;
 using RegCS2 = RegTCCR2B::Mask<0x07>;
-using RegWGM2 = uIO::Overlay<RegTCCR2A::Mask<0x03>, uIO::RightShift<RegTCCR2B::Mask<0x08>, 1>>;
+using RegWGM2 = uIO::BitExtend<RegTCCR2B::Mask<0x08>, RegTCCR2A::Mask<0x03>>;
 using BitOCIE2A = RegTIMSK2::Bit<OCIE2A>;
 
 const auto ZONES = 6;
 const auto CHANNELS = 3;
-using PWMPins = uIO::Extend<
-  uIO::Extend<uIO::PortB, uIO::PortC>,
-  uIO::Extend<uIO::PortD::Mask<0xFC>>>;
+using PWMPins = uIO::WordExtend<
+  uIO::WordExtend<uIO::PortB, uIO::PortC>,
+  uIO::WordExtend<uIO::PortD::Mask<0xFC>>>;
 using PWM = SoftwarePWM<PWMPins, RegOCR2A, ZONES, CHANNELS>;
 
 // Hook PWM routine into timer 2 compare interrupt
