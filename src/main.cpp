@@ -16,6 +16,7 @@ using uCLI::Args;
 StreamEx serialEx(Serial);
 uCLI::CLI<> serialCli(serialEx);
 
+#ifdef __AVR_ATmega328P__
 uIO_REG(TCCR2A)
 uIO_REG(TCCR2B)
 uIO_REG(TIMSK2)
@@ -29,7 +30,7 @@ using BitOCIE2A = RegTIMSK2::Bit<OCIE2A>;
 const auto ZONES = 6;
 const auto CHANNELS = 3;
 using PWMPins = uIO::WordExtend<
-  uIO::WordExtend<uIO::PortB, uIO::PortC>,
+  uIO::WordExtend<uIO::PortB::Mask<0x3F>, uIO::PortC::Mask<0x3F>>,
   uIO::WordExtend<uIO::PortD::Mask<0xFC>>>;
 using PWM = SoftwarePWM<PWMPins, RegOCR2A, ZONES, CHANNELS>;
 
@@ -37,6 +38,7 @@ using PWM = SoftwarePWM<PWMPins, RegOCR2A, ZONES, CHANNELS>;
 ISR(TIMER2_COMPA_vect) {
   PWM::isr();
 }
+#endif
 
 void setup() {
   PWMPins::config_output();
@@ -58,11 +60,13 @@ void setup() {
   PWM::set(5, 255, 31, 0);
   PWM::update();
 
+#ifdef __AVR_ATmega328P__
   // Configure hardware timer 2
   RegWGM2::write(2); // enable CTC mode
   RegCOM2A::write(0); // disconnect OC2A output
   BitOCIE2A::set(); // enable output compare interrupt
   RegCS2::write(4); // clk/64 prescaler
+#endif
 
   // Establish serial connection with computer
   Serial.begin(9600);
@@ -90,7 +94,7 @@ void loop() {
 void debug_pwm(uCLI::Args) {
   PWM::for_each<>([](PWMEvent<PWM::TYPE>* event) {
     // Print the value of each output bit this frame
-    // TODO fix the leading zeros so bits line up vertically
+    // TODO fix the leading zeros so bits line up vertically, like format_hex in uMon
     serialEx.print(event->bits, BIN);
     serialEx.print(" for ");
     // Print duty cycle of this frame (ticks * 100 / 255)
