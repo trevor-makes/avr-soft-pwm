@@ -11,36 +11,67 @@
 // This tutorial is a good resource to mention
 //https://raw.githubusercontent.com/abcminiuser/avr-tutorials/master/Timers/Output/Timers.pdf
 
+// TODO move Timer/TimerChannel to uIO?
+template <typename TCNT, typename CS, typename WGM, typename TOIE>
+struct Timer {
+  using counter = TCNT;
+  using prescaler = CS;
+  using waveform = WGM;
+  using interrupt = TOIE;
+};
+
+template <typename OCR, typename COM, typename OCIE>
+struct TimerCompare {
+  using value = OCR;
+  using output_mode = COM;
+  using interrupt = OCIE;
+};
+
 using uCLI::StreamEx;
 using uCLI::Args;
 StreamEx serialEx(Serial);
 uCLI::CLI<> serialCli(serialEx);
 
 #ifdef __AVR_ATmega328P__
+// uIO types for Timer2 registers
 uIO_REG(TCCR2A)
 uIO_REG(TCCR2B)
+uIO_REG(TCNT2)
 uIO_REG(TIMSK2)
 uIO_REG(OCR2A)
 
+// Aliases for Timer2 registers
 using RegCOM2A = uIO::RightAlign<RegTCCR2A::Mask<0xC0>>;
 using RegCS2 = RegTCCR2B::Mask<0x07>;
 using RegWGM2 = uIO::BitExtend<RegTCCR2B::Mask<0x08>, RegTCCR2A::Mask<0x03>>;
 using BitOCIE2A = RegTIMSK2::Bit<OCIE2A>;
+using BitTOIE2 = RegTIMSK2::Bit<TOIE2>;
 
-const auto ZONES = 6;
-const auto CHANNELS = 3;
+// Timer2 type wrapper
+constexpr const uint8_t WAVEFORM_CTC = 2;
+constexpr const uint8_t OUTPUT_MODE_OFF = 0;
+constexpr const uint8_t PRESCALE_64 = 4;
+using Timer2 = Timer<RegTCNT2, RegCS2, RegWGM2, BitTOIE2>;
+using Timer2A = TimerCompare<RegOCR2A, RegCOM2A, BitOCIE2A>;
+
+// SoftwarePWM pin mapping
+constexpr const uint8_t PWM_ZONES = 6;
+constexpr const uint8_t PWM_CHANNELS = 3;
 using PWMPins = uIO::WordExtend<
   uIO::WordExtend<uIO::PortB::Mask<0x3F>, uIO::PortC::Mask<0x3F>>,
   uIO::WordExtend<uIO::PortD::Mask<0xFC>>>;
-using PWM = SoftwarePWM<PWMPins, RegOCR2A, ZONES, CHANNELS>;
+using PWM = SoftwarePWM<PWMPins, Timer2A::value, PWM_ZONES, PWM_CHANNELS>;
 
 // Hook PWM routine into timer 2 compare interrupt
 ISR(TIMER2_COMPA_vect) {
   PWM::isr();
 }
+#else
+#error Need to provide configuration for current platform. See __AVR_ATmega328P__ configuration above.
 #endif
 
 void setup() {
+  // TODO should SoftwarePWM take care of pin config?
   PWMPins::config_output();
 
   // Configure mapping from zone/channel to bit within port register
@@ -61,11 +92,13 @@ void setup() {
   PWM::update();
 
 #ifdef __AVR_ATmega328P__
-  // Configure hardware timer 2
-  RegWGM2::write(2); // enable CTC mode
-  RegCOM2A::write(0); // disconnect OC2A output
-  BitOCIE2A::set(); // enable output compare interrupt
-  RegCS2::write(4); // clk/64 prescaler
+  // Configure hardware timer
+  Timer2::waveform::write(WAVEFORM_CTC); // enable CTC mode
+  Timer2A::output_mode::write(OUTPUT_MODE_OFF); // disconnect OC2A output
+  Timer2A::interrupt::set(); // enable compare interrupt
+  Timer2::prescaler::write(PRESCALE_64); // divide by 64
+#else
+#error TODO make this generic for platforms with different timer configs
 #endif
 
   // Establish serial connection with computer
@@ -140,5 +173,5 @@ void set_rgb(uCLI::Args args) {
 
 void set_scale(uCLI::Args args) {
   uint8_t scale = atoi(args.next());
-  RegCS2::write(scale);
+  Timer2::prescaler::write(scale);
 }
