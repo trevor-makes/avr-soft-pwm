@@ -55,9 +55,16 @@ public:
   }
 
   template <typename F>
-  static void for_each(F&& proc) {
-    for (auto cursor = front; cursor != nullptr; cursor = cursor->next) {
-      proc(cursor);
+  static void for_each_channel(F&& proc) {
+    for (uint8_t i = 0; i < ZONES * CHANNELS; ++i) {
+      proc(&channels[i], i / CHANNELS, i % CHANNELS);
+    }
+  }
+
+  template <typename F>
+  static void for_each_event(F&& proc) {
+    for (auto event = front; event != nullptr; event = event->next) {
+      proc(event);
     }
   }
 
@@ -112,7 +119,7 @@ public:
   }
 
   static void isr() {
-    static PWMEvent<TYPE>* next = front;
+    static auto next = front;
     OCR::write(next->delay);
     PORT::write(next->bits);
     next = next->next;
