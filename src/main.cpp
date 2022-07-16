@@ -106,10 +106,11 @@ void setup() {
   while (!Serial) {}
 }
 
-void debug_pwm(uCLI::Args);
-void do_pulse(uCLI::Args);
-void set_rgb(uCLI::Args);
-void set_scale(uCLI::Args);
+void debug_pwm(Args);
+void do_list(Args);
+void do_pulse(Args);
+void set_rgb(Args);
+void set_scale(Args);
 
 uCLI::IdleFn idle_fn = nullptr;
 
@@ -117,25 +118,42 @@ void loop() {
   static const uCLI::Command commands[] = {
     { "pulse", do_pulse },
     { "set", set_rgb },
-    { "debug", debug_pwm },
     { "scale", set_scale },
+    { "list", do_list },
+    { "debug", debug_pwm },
   };
 
   serialCli.run_once(commands, idle_fn);
 }
 
-void debug_pwm(uCLI::Args) {
-  PWM::for_each<>([](PWMEvent<PWM::TYPE>* event) {
+void debug_pwm(Args) {
+  PWM::for_each_event<>([](PWMEvent<PWM::TYPE>* event) {
     // Print the value of each output bit this frame
     // TODO fix the leading zeros so bits line up vertically, like format_hex in uMon
     serialEx.print(event->bits, BIN);
     serialEx.print(" for ");
     // Print duty cycle of this frame (ticks * 100 / 255)
-    // NOTE [>> 8 or / 256] is much faster and close enough to [/ 255]
+    // NOTE [/ 256] is within decimal precision of and much faster than [/ 255] (should compile to [>> 8])
     uint16_t ticks = event->delay + 1;
-    serialEx.print((ticks * 100 + 127) >> 8);
+    serialEx.print((ticks * 100 + 127) / 256);
     serialEx.println("%");
   });
+}
+
+void do_list(Args args) {
+  PWM::for_each_channel<>([](PWMChannel<PWM::TYPE>* info, uint8_t zone, uint8_t channel) {
+    if (channel == 0) {
+      if (zone != 0) {
+        serialEx.println();
+      }
+      serialEx.print(zone);
+      serialEx.print(": ");
+    } else {
+      serialEx.print(", ");
+    }
+    serialEx.print(info->value);
+  });
+  serialEx.println();
 }
 
 void pulse() {
@@ -157,11 +175,11 @@ void pulse() {
   PWM::update();
 }
 
-void do_pulse(uCLI::Args) {
+void do_pulse(Args) {
   idle_fn = pulse;
 }
 
-void set_rgb(uCLI::Args args) {
+void set_rgb(Args args) {
   idle_fn = nullptr;
   uint8_t zone = atoi(args.next());
   uint8_t red = atoi(args.next());
@@ -171,7 +189,7 @@ void set_rgb(uCLI::Args args) {
   PWM::update();
 }
 
-void set_scale(uCLI::Args args) {
+void set_scale(Args args) {
   uint8_t scale = atoi(args.next());
   Timer2::prescaler::write(scale);
 }
