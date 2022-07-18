@@ -54,13 +54,13 @@ constexpr const uint8_t PRESCALE_64 = 4;
 using Timer2 = Timer<RegTCNT2, RegCS2, RegWGM2, BitTOIE2>;
 using Timer2A = TimerCompare<RegOCR2A, RegCOM2A, BitOCIE2A>;
 
-// SoftwarePWM pin mapping
+// PWM Controller pin mapping
 constexpr const uint8_t PWM_ZONES = 6;
 constexpr const uint8_t PWM_CHANNELS = 3;
 using PWMPins = uIO::WordExtend<
   uIO::WordExtend<uIO::PortB::Mask<0x3F>, uIO::PortC::Mask<0x3F>>,
   uIO::WordExtend<uIO::PortD::Mask<0xFC>>>;
-using PWM = SoftwarePWM<PWMPins, Timer2A::value, PWM_ZONES, PWM_CHANNELS>;
+using PWM = uPWM::Controller<PWMPins, Timer2A::value, PWM_ZONES, PWM_CHANNELS>;
 
 // Hook PWM routine into timer 2 compare interrupt
 ISR(TIMER2_COMPA_vect) {
@@ -71,16 +71,20 @@ ISR(TIMER2_COMPA_vect) {
 #endif
 
 void setup() {
-  // TODO should SoftwarePWM take care of pin config?
+  // TODO should Controller take care of pin config?
   PWMPins::config_output();
 
   // Configure mapping from zone/channel to bit within port register
-  PWM::config(0,  8 + 4,  8 + 5,  8 + 3); // C4, C5, C3
-  PWM::config(1,  8 + 1,  8 + 2,  8 + 0); // C1, C2, C0
-  PWM::config(2, 16 + 6, 16 + 7, 16 + 5); // D6, D7, D5
-  PWM::config(3,  0 + 4,  0 + 5,  0 + 3); // B4, B5, B3
-  PWM::config(4,  0 + 1,  0 + 2,  0 + 0); // B1, B2, B0
-  PWM::config(5, 16 + 3, 16 + 4, 16 + 2); // D3, D4, D2
+  //     7  6  5  4  3  2  1  0
+  // B [ -  - g1 r1 b1 g0 r0 b0]
+  // C [ -  - g3 r3 b3 g2 r2 b2]
+  // D [g5 r5 b5 g4 r4 b4  -  -]
+  PWM::config(0,  8 + 4,  8 + 5,  8 + 3); // r0, g0, b0
+  PWM::config(1,  8 + 1,  8 + 2,  8 + 0); // r1, g1, b1
+  PWM::config(2, 16 + 6, 16 + 7, 16 + 5); // r2, g2, b2
+  PWM::config(3,  0 + 4,  0 + 5,  0 + 3); // r3, g3, b3
+  PWM::config(4,  0 + 1,  0 + 2,  0 + 0); // r4, g4, b4
+  PWM::config(5, 16 + 3, 16 + 4, 16 + 2); // r5, g5, b5
 
   // Set RGB value (duty cycle) to default gradient
   PWM::set(0, 255, 0, 191);
@@ -143,7 +147,7 @@ void debug_pwm(Args) {
 }
 
 void do_list(Args args) {
-  PWM::for_each_channel<>([](PWMChannel<PWM::TYPE>* info, uint8_t zone, uint8_t channel) {
+  PWM::for_each_channel<>([](uPWM::Channel<PWM::TYPE>* info, uint8_t zone, uint8_t channel) {
     if (channel == 0) {
       if (zone != 0) {
         serialEx.println();

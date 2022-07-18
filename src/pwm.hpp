@@ -20,14 +20,16 @@ public:
   }
 };
 
+namespace uPWM {
+
 template <typename TYPE>
-struct PWMChannel {
+struct Channel {
   TYPE pin;
   uint8_t duty;
 };
 
 template <typename PORT, uint8_t SIZE>
-class PWMEvents {
+class Events {
   using TYPE = typename PORT::TYPE;
 
   struct Event {
@@ -41,7 +43,7 @@ class PWMEvents {
 public:
   // TODO could take a channel iterator instead
   template <uint8_t N>
-  void update(PWMChannel<TYPE> (&channels)[N]) {
+  void update(Channel<TYPE> (&channels)[N]) {
     count_ = 0;
     insert({0, 0});
     for (auto& channel : channels) {
@@ -51,11 +53,11 @@ public:
   }
 
   class iterator {
-    PWMEvents* events_;
+    Events* events_;
     uint8_t index_ = 0;
 
   public:
-    iterator(PWMEvents& events): events_{&events} {}
+    iterator(Events& events): events_{&events} {}
 
     iterator& operator=(iterator const& copy) {
       events_ = copy.events_;
@@ -81,7 +83,7 @@ public:
   }
 
 protected:
-  void insert(PWMChannel<TYPE> const& channel) {
+  void insert(Channel<TYPE> const& channel) {
     // 100% duty cycle channels never turn off, so they don't need an event
     if (channel.duty == 255) {
       return;
@@ -133,13 +135,13 @@ protected:
 };
 
 template <typename PORT, typename OCR, uint8_t ZONES, uint8_t CHANNELS_PER_ZONE>
-class SoftwarePWM {
+class Controller {
 public:
   using TYPE = typename PORT::TYPE;
-  using EVENTS = PWMEvents<PORT, ZONES * CHANNELS_PER_ZONE + 1>;
+  using EVENTS = Events<PORT, ZONES * CHANNELS_PER_ZONE + 1>;
 
 private:
-  static PWMChannel<TYPE> channels[ZONES * CHANNELS_PER_ZONE];
+  static Channel<TYPE> channels[ZONES * CHANNELS_PER_ZONE];
   static DoubleBuffer<EVENTS> events;
   static bool dirty;
 
@@ -215,10 +217,12 @@ public:
 };
 
 template <typename PORT, typename OCR, uint8_t ZONES, uint8_t CHANNELS>
-PWMChannel<typename PORT::TYPE> SoftwarePWM<PORT, OCR, ZONES, CHANNELS>::channels[ZONES * CHANNELS];
+Channel<typename PORT::TYPE> Controller<PORT, OCR, ZONES, CHANNELS>::channels[ZONES * CHANNELS];
 
 template <typename PORT, typename OCR, uint8_t ZONES, uint8_t CHANNELS>
-DoubleBuffer<PWMEvents<PORT, ZONES * CHANNELS + 1>> SoftwarePWM<PORT, OCR, ZONES, CHANNELS>::events;
+DoubleBuffer<Events<PORT, ZONES * CHANNELS + 1>> Controller<PORT, OCR, ZONES, CHANNELS>::events;
 
 template <typename PORT, typename OCR, uint8_t ZONES, uint8_t CHANNELS>
-bool SoftwarePWM<PORT, OCR, ZONES, CHANNELS>::dirty = false;
+bool Controller<PORT, OCR, ZONES, CHANNELS>::dirty = false;
+
+} // namespace uPWM
