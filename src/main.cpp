@@ -76,15 +76,16 @@ void setup() {
 
   // Configure mapping from zone/channel to bit within port register
   //     7  6  5  4  3  2  1  0
-  // B [ -  - g1 r1 b1 g0 r0 b0]
-  // C [ -  - g3 r3 b3 g2 r2 b2]
-  // D [g5 r5 b5 g4 r4 b4  -  -]
-  PWM::config(0,  8 + 4,  8 + 5,  8 + 3); // r0, g0, b0
-  PWM::config(1,  8 + 1,  8 + 2,  8 + 0); // r1, g1, b1
-  PWM::config(2, 16 + 6, 16 + 7, 16 + 5); // r2, g2, b2
-  PWM::config(3,  0 + 4,  0 + 5,  0 + 3); // r3, g3, b3
-  PWM::config(4,  0 + 1,  0 + 2,  0 + 0); // r4, g4, b4
-  PWM::config(5, 16 + 3, 16 + 4, 16 + 2); // r5, g5, b5
+  // B [ -  - g3 r3 b3 g4 r4 b4]
+  // C [ -  - g0 r0 b0 g1 r1 b1]
+  // D [g2 r2 b2 g5 r5 b5  -  -]
+  constexpr auto B = 0, C = 8, D = 16;
+  PWM::config(0, C + 4, C + 5, C + 3); // r0, g0, b0
+  PWM::config(1, C + 1, C + 2, C + 0); // r1, g1, b1
+  PWM::config(2, D + 6, D + 7, D + 5); // r2, g2, b2
+  PWM::config(3, B + 4, B + 5, B + 3); // r3, g3, b3
+  PWM::config(4, B + 1, B + 2, B + 0); // r4, g4, b4
+  PWM::config(5, D + 3, D + 4, D + 2); // r5, g5, b5
 
   // Set RGB value (duty cycle) to default gradient
   PWM::set(0, 255, 0, 191);
