@@ -50,7 +50,7 @@ using BitTOIE2 = RegTIMSK2::Bit<TOIE2>;
 // Timer2 type wrapper
 constexpr const uint8_t WAVEFORM_CTC = 2;
 constexpr const uint8_t OUTPUT_MODE_OFF = 0;
-constexpr const uint8_t PRESCALE_64 = 4;
+constexpr const uint8_t PRESCALE_256 = 6;
 using Timer2 = Timer<RegTCNT2, RegCS2, RegWGM2, BitTOIE2>;
 using Timer2A = TimerCompare<RegOCR2A, RegCOM2A, BitOCIE2A>;
 
@@ -100,7 +100,7 @@ void setup() {
   Timer2::waveform::write(WAVEFORM_CTC); // enable CTC mode
   Timer2A::output_mode::write(OUTPUT_MODE_OFF); // disconnect OC2A output
   Timer2A::interrupt::set(); // enable compare interrupt
-  Timer2::prescaler::write(PRESCALE_64); // divide by 64
+  Timer2::prescaler::write(PRESCALE_256); // divide by 256
 #else
 #error TODO make this generic for platforms with different timer configs
 #endif
@@ -166,18 +166,22 @@ void pulse() {
   static uint8_t ch[] = {0, 31, 63, 94, 127, 158, 191, 222};
   static int8_t st[] = {1, 1, 1, 1, 1, 1, 1, 1};
   static auto last = millis();
+  // Limit animation frames to 20 ms
   auto now = millis();
-  if (now - last < 20) return;
-  last = now;
-  for (uint8_t i = 0; i < 8; ++i) {
-    if (ch[i] == 0) { st[i] = 1; }
-    if (ch[i] == 255) { st[i] = -1; }
-    ch[i] += st[i];
+  if (now - last >= 20) {
+    last = now;
+    for (uint8_t i = 0; i < 8; ++i) {
+      if (ch[i] == 0) { st[i] = 1; }
+      if (ch[i] == 255) { st[i] = -1; }
+      ch[i] += st[i];
+    }
   }
   PWM::set(0, ch[0], 0, ch[3]);
   PWM::set(1, ch[2], 0, ch[5]);
   PWM::set(2, ch[4], 0, ch[7]);
   PWM::set(3, ch[6], 0, ch[1]);
+  PWM::set(4, ch[0], 0, ch[3]);
+  PWM::set(5, ch[2], 0, ch[5]);
   PWM::update();
 }
 
