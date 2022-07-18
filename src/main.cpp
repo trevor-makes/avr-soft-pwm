@@ -60,11 +60,11 @@ constexpr const uint8_t PWM_CHANNELS = 3;
 using PWMPins = uIO::WordExtend<
   uIO::WordExtend<uIO::PortB::Mask<0x3F>, uIO::PortC::Mask<0x3F>>,
   uIO::WordExtend<uIO::PortD::Mask<0xFC>>>;
-using PWM = uPWM::Controller<PWMPins, Timer2A::value, PWM_ZONES, PWM_CHANNELS>;
+uPWM::Controller<PWMPins, Timer2A::value, PWM_ZONES, PWM_CHANNELS> pwm;
 
 // Hook PWM routine into timer 2 compare interrupt
 ISR(TIMER2_COMPA_vect) {
-  PWM::isr();
+  pwm.isr();
 }
 #else
 #error Need to provide configuration for current platform. See __AVR_ATmega328P__ configuration above.
@@ -80,21 +80,21 @@ void setup() {
   // C [ -  - g0 r0 b0 g1 r1 b1]
   // D [g2 r2 b2 g5 r5 b5  -  -]
   constexpr auto B = 0, C = 8, D = 16;
-  PWM::config(0, C + 4, C + 5, C + 3); // r0, g0, b0
-  PWM::config(1, C + 1, C + 2, C + 0); // r1, g1, b1
-  PWM::config(2, D + 6, D + 7, D + 5); // r2, g2, b2
-  PWM::config(3, B + 4, B + 5, B + 3); // r3, g3, b3
-  PWM::config(4, B + 1, B + 2, B + 0); // r4, g4, b4
-  PWM::config(5, D + 3, D + 4, D + 2); // r5, g5, b5
+  pwm.config(0, C + 4, C + 5, C + 3); // r0, g0, b0
+  pwm.config(1, C + 1, C + 2, C + 0); // r1, g1, b1
+  pwm.config(2, D + 6, D + 7, D + 5); // r2, g2, b2
+  pwm.config(3, B + 4, B + 5, B + 3); // r3, g3, b3
+  pwm.config(4, B + 1, B + 2, B + 0); // r4, g4, b4
+  pwm.config(5, D + 3, D + 4, D + 2); // r5, g5, b5
 
   // Set RGB value (duty cycle) to default gradient
-  PWM::set(0, 255, 0, 191);
-  PWM::set(1, 191, 0, 63);
-  PWM::set(2, 191, 31, 63);
-  PWM::set(3, 191, 63, 63);
-  PWM::set(4, 255, 63, 15);
-  PWM::set(5, 255, 31, 0);
-  PWM::update();
+  pwm.set(0, 255, 0, 191);
+  pwm.set(1, 191, 0, 63);
+  pwm.set(2, 191, 31, 63);
+  pwm.set(3, 191, 63, 63);
+  pwm.set(4, 255, 63, 15);
+  pwm.set(5, 255, 31, 0);
+  pwm.update();
 
 #ifdef __AVR_ATmega328P__
   // Configure hardware timer
@@ -132,7 +132,7 @@ void loop() {
 }
 
 void debug_pwm(Args) {
-  auto iter = PWM::event_iter();
+  auto iter = pwm.event_iter();
   while (iter.has_next()) {
     auto event = iter.next();
     // Print the value of each output bit this frame
@@ -148,7 +148,7 @@ void debug_pwm(Args) {
 }
 
 void do_list(Args args) {
-  PWM::for_each_channel<>([](uPWM::Channel<PWM::TYPE>* info, uint8_t zone, uint8_t channel) {
+  pwm.for_each_channel<>([](uPWM::Channel<PWMPins::TYPE>* info, uint8_t zone, uint8_t channel) {
     if (channel == 0) {
       if (zone != 0) {
         serialEx.println();
@@ -177,13 +177,13 @@ void pulse() {
       ch[i] += st[i];
     }
   }
-  PWM::set(0, ch[0], 0, ch[3]);
-  PWM::set(1, ch[2], 0, ch[5]);
-  PWM::set(2, ch[4], 0, ch[7]);
-  PWM::set(3, ch[6], 0, ch[1]);
-  PWM::set(4, ch[0], 0, ch[3]);
-  PWM::set(5, ch[2], 0, ch[5]);
-  PWM::update();
+  pwm.set(0, ch[0], 0, ch[3]);
+  pwm.set(1, ch[2], 0, ch[5]);
+  pwm.set(2, ch[4], 0, ch[7]);
+  pwm.set(3, ch[6], 0, ch[1]);
+  pwm.set(4, ch[0], 0, ch[3]);
+  pwm.set(5, ch[2], 0, ch[5]);
+  pwm.update();
 }
 
 void do_pulse(Args) {
@@ -196,8 +196,8 @@ void set_rgb(Args args) {
   uint8_t red = atoi(args.next());
   uint8_t green = atoi(args.next());
   uint8_t blue = atoi(args.next());
-  PWM::set(zone, red, green, blue);
-  PWM::update();
+  pwm.set(zone, red, green, blue);
+  pwm.update();
 }
 
 void set_scale(Args args) {

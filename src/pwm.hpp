@@ -136,65 +136,66 @@ protected:
 
 template <typename PORT, typename OCR, uint8_t ZONES, uint8_t CHANNELS_PER_ZONE>
 class Controller {
-public:
-  using TYPE = typename PORT::TYPE;
-  using EVENTS = Events<PORT, ZONES * CHANNELS_PER_ZONE + 1>;
+  static constexpr auto NUM_CHANNELS = ZONES * CHANNELS_PER_ZONE;
+  static constexpr auto NUM_EVENTS = NUM_CHANNELS + 1;
 
-private:
-  static Channel<TYPE> channels[ZONES * CHANNELS_PER_ZONE];
-  static DoubleBuffer<EVENTS> events;
-  static bool dirty;
+  using TYPE = typename PORT::TYPE;
+  using EVENTS = Events<PORT, NUM_EVENTS>;
+
+  Channel<TYPE> channels_[NUM_CHANNELS];
+  DoubleBuffer<EVENTS> events_;
+  bool dirty_;
 
 public:
   template <uint8_t C = 0, typename T>
-  static void config(uint8_t zone, T index) {
+  void config(uint8_t zone, T index) {
     static_assert(C < CHANNELS_PER_ZONE, "too many channel parameters");
-    channels[zone * CHANNELS_PER_ZONE + C].pin = TYPE(1) << index;
-    channels[zone * CHANNELS_PER_ZONE + C].duty = 0;
+    channels_[zone * CHANNELS_PER_ZONE + C].pin = TYPE(1) << index;
+    channels_[zone * CHANNELS_PER_ZONE + C].duty = 0;
   }
 
   template <uint8_t C = 0, typename T, typename... Var>
-  static void config(uint8_t zone, T index, const Var... var) {
+  void config(uint8_t zone, T index, const Var... var) {
     config<C>(zone, index);
     config<C + 1, Var...>(zone, var...);
   }
 
   template <uint8_t C = 0, typename T>
-  static void set(uint8_t zone, T duty) {
+  void set(uint8_t zone, T duty) {
     static_assert(C < CHANNELS_PER_ZONE, "too many channel parameters");
-    channels[zone * CHANNELS_PER_ZONE + C].duty = duty;
+    channels_[zone * CHANNELS_PER_ZONE + C].duty = duty;
   }
 
   template <uint8_t C = 0, typename T, typename... Var>
-  static void set(uint8_t zone, T duty, const Var... var) {
+  void set(uint8_t zone, T duty, const Var... var) {
     set<C>(zone, duty);
     set<C + 1, Var...>(zone, var...);
   }
 
   template <typename F>
-  static void for_each_channel(F&& proc) {
+  void for_each_channel(F&& proc) {
     for (uint8_t i = 0; i < ZONES * CHANNELS_PER_ZONE; ++i) {
       uint8_t zone = i / CHANNELS_PER_ZONE;
       uint8_t channel = i % CHANNELS_PER_ZONE;
-      proc(&channels[i], zone, channel);
+      proc(&channels_[i], zone, channel);
     }
   }
 
-  static typename EVENTS::iterator event_iter() {
-    return events.front().iter();
+  typename EVENTS::iterator event_iter() {
+    return events_.front().iter();
   }
 
-  static void update() {
+  void update() {
     // TODO triple buffer would let us update more than once per cycle and keep the latest
-    if (!dirty) {
+    if (!dirty_) {
       // Update events in back buffer
-      events.back().update(channels);
-      dirty = true;
+      events_.back().update(channels_);
+      dirty_ = true;
     }
   }
 
-  static void isr() {
-    static auto iter = events.front().iter();
+  void isr() {
+    static auto iter = events_.front().iter();
     // Handle the next event in the queue
     if (auto next = iter.next()) {
       // Update timer and GPIO registers according to event
@@ -204,25 +205,17 @@ public:
       // If iterator is empty just clear GPIO pins
       PORT::clear();
     }
-    // Reset iterator when we reach the end
+    // When reach the end the end of the event queue...
     if (!iter.has_next()) {
-      if (dirty) {
-        // Flip back buffer if we updated it
-        events.flip();
-        dirty = false;
+      // Only flip back buffer if it has been written to
+      if (dirty_) {
+        events_.flip();
+        dirty_ = false;
       }
-      iter = events.front().iter();
+      // Reset iterator to start of event queue
+      iter = events_.front().iter();
     }
   }
 };
-
-template <typename PORT, typename OCR, uint8_t ZONES, uint8_t CHANNELS>
-Channel<typename PORT::TYPE> Controller<PORT, OCR, ZONES, CHANNELS>::channels[ZONES * CHANNELS];
-
-template <typename PORT, typename OCR, uint8_t ZONES, uint8_t CHANNELS>
-DoubleBuffer<Events<PORT, ZONES * CHANNELS + 1>> Controller<PORT, OCR, ZONES, CHANNELS>::events;
-
-template <typename PORT, typename OCR, uint8_t ZONES, uint8_t CHANNELS>
-bool Controller<PORT, OCR, ZONES, CHANNELS>::dirty = false;
 
 } // namespace uPWM
