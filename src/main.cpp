@@ -127,17 +127,19 @@ void loop() {
 }
 
 void debug_pwm(Args) {
-  PWM::for_each_event<>([](PWMEvent<PWM::TYPE>* event) {
+  auto iter = PWM::event_iter();
+  while (iter.has_next()) {
+    auto event = iter.next();
     // Print the value of each output bit this frame
     // TODO fix the leading zeros so bits line up vertically, like format_hex in uMon
-    serialEx.print(event->bits, BIN);
+    serialEx.print(event->pins, BIN);
     serialEx.print(" for ");
     // Print duty cycle of this frame (ticks * 100 / 255)
     // NOTE [/ 256] is within decimal precision of and much faster than [/ 255] (should compile to [>> 8])
-    uint16_t ticks = event->delay + 1;
+    uint16_t ticks = event->delta + 1;
     serialEx.print((ticks * 100 + 127) / 256);
     serialEx.println("%");
-  });
+  };
 }
 
 void do_list(Args args) {
@@ -151,7 +153,7 @@ void do_list(Args args) {
     } else {
       serialEx.print(", ");
     }
-    serialEx.print(info->value);
+    serialEx.print(info->duty);
   });
   serialEx.println();
 }
