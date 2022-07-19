@@ -140,8 +140,8 @@ void measure_isr(Args) {
   // Toggle test pin at 2 MHz (16 MHz / 8) in an infinite loop
   // When an ISR runs, the pin will freeze; measure the pulse width to time the ISR
   // -| 8 |- CPU cycles
-  //  |   |  |- ISR length -|
-  // _/-\_/-\________________/-\_/-\_
+  //  |   |   |- ISR length -|     |- ISR length -|
+  // _/-\_/-\_:______________/-\_/-:--------------\_
   for (;;) {
     uIO::PinB5::set(); // 2 cycles
     __asm__("NOP\nNOP\n"); // 2 cycles
