@@ -71,8 +71,7 @@ ISR(TIMER2_COMPA_vect) {
 #endif
 
 void setup() {
-  // TODO should Controller take care of pin config?
-  PWMPins::config_output();
+  pwm.init();
 
   // Configure mapping from zone/channel to bit within port register
   //     7  6  5  4  3  2  1  0
@@ -94,6 +93,8 @@ void setup() {
   pwm.set(3, 191, 63, 63);
   pwm.set(4, 255, 63, 15);
   pwm.set(5, 255, 31, 0);
+
+  // Compile PWM timing for new values and reprogram next cycle
   pwm.update();
 
 #ifdef __AVR_ATmega328P__
@@ -136,15 +137,16 @@ void loop() {
 
 void measure_isr(Args) {
   serialEx.println("Measure pulse width on pin B5 (13 on Uno/Nano)");
-  // Toggle test pin at 2 MHz in an infinite loop
-  // When an ISR is running, the pin will stop toggling; measure the gap to time the ISR
-  //         [  ISR length  ]
+  // Toggle test pin at 2 MHz (16 MHz / 8) in an infinite loop
+  // When an ISR runs, the pin will freeze; measure the pulse width to time the ISR
+  // -| 8 |- CPU cycles
+  //  |   |  |- ISR length -|
   // _/-\_/-\________________/-\_/-\_
-  for (;;) { // 2 cycles
+  for (;;) {
     uIO::PinB5::set(); // 2 cycles
     __asm__("NOP\nNOP\n"); // 2 cycles
     uIO::PinB5::clear(); // 2 cycles
-  }
+  } // goto start, 2 cycles
 }
 
 void debug_pwm(Args) {

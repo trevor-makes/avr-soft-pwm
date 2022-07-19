@@ -149,6 +149,10 @@ class Controller {
   bool dirty_ = false;
 
 public:
+  void init() {
+    PORT::config_output();
+  }
+
   template <uint8_t C = 0, typename T>
   void config(uint8_t zone, T index) {
     static_assert(C < CHANNELS_PER_ZONE, "too many channel parameters");
