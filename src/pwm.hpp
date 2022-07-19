@@ -57,6 +57,7 @@ public:
     uint8_t index_ = 0;
 
   public:
+    iterator(): events_{nullptr} {}
     iterator(Events& events): events_{&events} {}
 
     iterator& operator=(iterator const& copy) {
@@ -66,7 +67,7 @@ public:
     }
 
     bool has_next() {
-      return index_ < events_->count_;
+      return events_ && index_ < events_->count_;
     }
 
     Event* next() {
@@ -144,7 +145,8 @@ class Controller {
 
   Channel<TYPE> channels_[NUM_CHANNELS];
   DoubleBuffer<EVENTS> events_;
-  bool dirty_;
+  typename EVENTS::iterator isr_iter_;
+  bool dirty_ = false;
 
 public:
   template <uint8_t C = 0, typename T>
@@ -195,25 +197,24 @@ public:
   }
 
   void isr() {
-    static auto iter = events_.front().iter();
+    // When the end of the event queue is reached...
+    if (!isr_iter_.has_next()) {
+      // Flip back buffer if it was updated
+      if (dirty_) {
+        events_.flip();
+        dirty_ = false;
+      }
+      // Reset iterator to start of event queue
+      isr_iter_ = events_.front().iter();
+    }
     // Handle the next event in the queue
-    if (auto next = iter.next()) {
+    if (auto next = isr_iter_.next()) {
       // Update timer and GPIO registers according to event
       OCR::write(next->delta);
       PORT::write(next->pins);
     } else {
       // If iterator is empty just clear GPIO pins
       PORT::clear();
-    }
-    // When reach the end the end of the event queue...
-    if (!iter.has_next()) {
-      // Only flip back buffer if it has been written to
-      if (dirty_) {
-        events_.flip();
-        dirty_ = false;
-      }
-      // Reset iterator to start of event queue
-      iter = events_.front().iter();
     }
   }
 };
