@@ -101,6 +101,7 @@ void setup() {
   Timer2::waveform::write(WAVEFORM_CTC); // enable CTC mode
   Timer2A::output_mode::write(OUTPUT_MODE_OFF); // disconnect OC2A output
   Timer2A::interrupt::set(); // enable compare interrupt
+  // NOTE longest ISR measured was ~150 clocks, so use the next largest prescaler (timer must be slower than ISR)
   Timer2::prescaler::write(PRESCALE_256); // divide by 256
 #else
 #error TODO make this generic for platforms with different timer configs
@@ -116,6 +117,7 @@ void do_list(Args);
 void do_pulse(Args);
 void set_rgb(Args);
 void set_scale(Args);
+void measure_isr(Args);
 
 uCLI::IdleFn idle_fn = nullptr;
 
@@ -126,9 +128,23 @@ void loop() {
     { "scale", set_scale },
     { "list", do_list },
     { "debug", debug_pwm },
+    { "measure", measure_isr },
   };
 
   serialCli.run_once(commands, idle_fn);
+}
+
+void measure_isr(Args) {
+  serialEx.println("Measure pulse width on pin B5 (13 on Uno/Nano)");
+  // Toggle test pin at 2 MHz in an infinite loop
+  // When an ISR is running, the pin will stop toggling; measure the gap to time the ISR
+  //         [  ISR length  ]
+  // _/-\_/-\________________/-\_/-\_
+  for (;;) { // 2 cycles
+    uIO::PinB5::set(); // 2 cycles
+    __asm__("NOP\nNOP\n"); // 2 cycles
+    uIO::PinB5::clear(); // 2 cycles
+  }
 }
 
 void debug_pwm(Args) {
