@@ -116,8 +116,9 @@ void setup() {
 void debug_pwm(Args);
 void do_list(Args);
 void do_pulse(Args);
-void set_rgb(Args);
-void set_scale(Args);
+void config_channel(Args);
+void set_channel(Args);
+void set_prescaler(Args);
 void measure_isr(Args);
 
 uCLI::IdleFn idle_fn = nullptr;
@@ -125,11 +126,12 @@ uCLI::IdleFn idle_fn = nullptr;
 void loop() {
   static const uCLI::Command commands[] = {
     { "pulse", do_pulse },
-    { "set", set_rgb },
-    { "scale", set_scale },
+    { "config", config_channel },
+    { "set", set_channel },
     { "list", do_list },
     { "debug", debug_pwm },
     { "measure", measure_isr },
+    { "prescaler", set_prescaler },
   };
 
   serialCli.run_once(commands, idle_fn);
@@ -208,7 +210,17 @@ void do_pulse(Args) {
   idle_fn = pulse;
 }
 
-void set_rgb(Args args) {
+// Reconfigure pin mapping
+void config_channel(Args args) {
+  uint8_t zone = atoi(args.next());
+  uint8_t red = atoi(args.next());
+  uint8_t green = atoi(args.next());
+  uint8_t blue = atoi(args.next());
+  pwm.config(zone, red, green, blue);
+}
+
+// Reprogram channel
+void set_channel(Args args) {
   idle_fn = nullptr;
   uint8_t zone = atoi(args.next());
   uint8_t red = atoi(args.next());
@@ -218,7 +230,8 @@ void set_rgb(Args args) {
   pwm.update();
 }
 
-void set_scale(Args args) {
-  uint8_t scale = atoi(args.next());
-  Timer2::prescaler::write(scale);
+// Select PWM timer frequency
+void set_prescaler(Args args) {
+  uint8_t prescaler = atoi(args.next());
+  Timer2::prescaler::write(prescaler);
 }
