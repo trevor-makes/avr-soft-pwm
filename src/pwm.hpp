@@ -146,6 +146,7 @@ class Controller {
   Channel<TYPE> channels_[NUM_CHANNELS];
   DoubleBuffer<EVENTS> events_;
   typename EVENTS::iterator isr_iter_;
+  uint16_t counter_ = 0;
   bool dirty_ = false;
 
 public:
@@ -191,6 +192,14 @@ public:
     return events_.front().iter();
   }
 
+  uint16_t get_count() {
+    return counter_;
+  }
+
+  bool can_update() {
+    return dirty_ == false;
+  }
+
   void update() {
     // TODO triple buffer would let us update more than once per cycle and keep the latest
     if (!dirty_) {
@@ -203,6 +212,7 @@ public:
   void isr() {
     // When the end of the event queue is reached...
     if (!isr_iter_.has_next()) {
+      ++counter_;
       // Flip back buffer if it was updated
       if (dirty_) {
         events_.flip();
