@@ -183,23 +183,125 @@ void do_list(Args args) {
   serialEx.println();
 }
 
+template <uint8_t N>
+class Keyframes {
+  struct Keyframe {
+    uint8_t value;
+    uint16_t time;
+  };
+
+  Keyframe frames_[N];
+  uint8_t count_ = 0;
+  uint16_t period_ = 0;
+
+public:
+  void clear() { count_ = 0; }
+  void set_period(uint16_t period) { period_ = period; }
+
+  bool insert(uint16_t time, uint8_t value) {
+    if (count_ == N) {
+      return false;
+    }
+    uint8_t index = 0;
+    for (; index < count_; ++index) {
+      if (time < frames_[index].time) {
+        break;
+      }
+    }
+    memmove(&frames_[index+1], &frames_[index], (count_ - index) * sizeof(Keyframe));
+    frames_[index].time = time;
+    frames_[index].value = value;
+    ++count_;
+    return true;
+  }
+
+  void debug() {
+    for (uint8_t i = 0; i < count_; ++i) {
+      serialEx.print(i);
+      serialEx.print(" @ ");
+      serialEx.print(frames_[i].time);
+      serialEx.print(" = ");
+      serialEx.println(frames_[i].value);
+    }
+  }
+
+  uint8_t evaluate(uint16_t time) {
+    if (count_ == 0) {
+      return 0;
+    } else if (count_ == 1) {
+      // NOTE the lerp logic should work with count_ == 1, so this special case isn't really necessary
+      return frames_[0].value;
+    }
+
+    time %= period_;
+
+    // Find index of first frame later than time
+    uint8_t index = 0;
+    for (; index < count_; ++index) {
+      auto const& frame_time = frames_[index].time;
+      if (time == frame_time) {
+        // Just return the keyframe value if the time matches
+        return frames_[index].value;
+      } else if (time < frame_time) {
+        break;
+      }
+    }
+
+    // Lerp between previous and next keyframes
+    // TODO refactor redundant logic
+    if (index == 0) {
+      // Previous keyframe wraps-around
+      // [0] is next, [count_ - 1] is prev
+      // time < [0] < [count_ - 1]
+      uint16_t delta = frames_[0].time + (period_ - frames_[count_ - 1].time);
+      uint32_t w0 = uint32_t(frames_[count_ - 1].value) * (frames_[0].time - time);
+      uint32_t w1 = uint32_t(frames_[0].value) * (period_ - frames_[count_ - 1].time + time);
+      return (w0 + w1) / delta;
+    } else if (index == count_) {
+      // Following keyframe wraps-around
+      // [0] is next, [count_ - 1] is prev
+      // [0] < [count_ - 1] < time
+      uint16_t delta = frames_[0].time + (period_ - frames_[count_ - 1].time);
+      uint32_t w0 = uint32_t(frames_[count_ - 1].value) * (period_ - time + frames_[0].time);
+      uint32_t w1 = uint32_t(frames_[0].value) * (time - frames_[count_ - 1].time);
+      return (w0 + w1) / delta;
+    } else {
+      // [index - 1] < time < [index]
+      uint16_t delta = frames_[index].time - frames_[index - 1].time;
+      uint32_t w0 = uint32_t(frames_[index - 1].value) * (frames_[index].time - time);
+      uint32_t w1 = uint32_t(frames_[index].value) * (time - frames_[index - 1].time);
+      return (w0 + w1) / delta;
+    }
+  }
+};
+
+Keyframes<2> red_frames;
+Keyframes<2> blue_frames;
+
 void pulse() {
-  static uint8_t ch[] = {0, 31, 63, 94, 127, 158, 191, 222};
-  static int8_t st[] = {1, 1, 1, 1, 1, 1, 1, 1};
+  //static uint8_t ch[] = {0, 31, 63, 94, 127, 158, 191, 222};
+  //static int8_t st[] = {1, 1, 1, 1, 1, 1, 1, 1};
   if (pwm.can_update()) {
     // Limit animation frames to 20 ms (5 PWM cycles @ 16 MHz/256)
-    if (pwm.get_count() % 5 == 0) {
-      for (uint8_t i = 0; i < 8; ++i) {
+    //if (pwm.get_count() % 5 == 0) {
+    {
+      /*for (uint8_t i = 0; i < 8; ++i) {
         if (ch[i] == 0) { st[i] = 1; }
         if (ch[i] == 255) { st[i] = -1; }
         ch[i] += st[i];
-      }
-      pwm.set(0, ch[0], 0, ch[4]);
+      }*/
+      /*pwm.set(0, ch[0], 0, ch[4]);
       pwm.set(1, ch[1], 0, ch[5]);
       pwm.set(2, ch[2], 0, ch[6]);
       pwm.set(3, ch[3], 0, ch[7]);
       pwm.set(4, ch[4], 0, ch[0]);
-      pwm.set(5, ch[5], 0, ch[1]);
+      pwm.set(5, ch[5], 0, ch[1]);*/
+      for (uint8_t i = 0; i < 6; ++i) {
+        // TODO need to handle pwm.get_count() overflow somehow; maybe use delta instead of absolute time
+        uint8_t red = red_frames.evaluate(pwm.get_count() + i * 100);
+        uint8_t blue = blue_frames.evaluate(pwm.get_count() + i * 100);
+        pwm.set(i, red, 0, blue);
+      }
       pwm.update();
     }
   }
@@ -207,6 +309,26 @@ void pulse() {
 
 void do_pulse(Args) {
   idle_fn = pulse;
+
+  red_frames.clear();
+  red_frames.insert(0, 255);
+  red_frames.insert(500, 0);
+  red_frames.set_period(1000);
+  //red_frames.debug();
+
+  blue_frames.clear();
+  blue_frames.insert(0, 0);
+  blue_frames.insert(500, 255);
+  blue_frames.set_period(1000);
+  //blue_frames.debug();
+
+  /*for (uint16_t i = 0; i < 1000; i += 100) {
+    for (uint8_t j = 0; j < 100; j += 10) {
+      serialEx.print(red_frames.evaluate(i + j));
+      serialEx.print("  ");
+    }
+    serialEx.println();
+  }*/
 }
 
 // Reconfigure pin mapping
