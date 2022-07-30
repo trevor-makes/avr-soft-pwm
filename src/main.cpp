@@ -279,31 +279,24 @@ Keyframes<2> red_frames;
 Keyframes<2> blue_frames;
 
 void pulse() {
-  //static uint8_t ch[] = {0, 31, 63, 94, 127, 158, 191, 222};
-  //static int8_t st[] = {1, 1, 1, 1, 1, 1, 1, 1};
   if (pwm.can_update()) {
-    // Limit animation frames to 20 ms (5 PWM cycles @ 16 MHz/256)
-    //if (pwm.get_count() % 5 == 0) {
-    {
-      /*for (uint8_t i = 0; i < 8; ++i) {
-        if (ch[i] == 0) { st[i] = 1; }
-        if (ch[i] == 255) { st[i] = -1; }
-        ch[i] += st[i];
-      }*/
-      /*pwm.set(0, ch[0], 0, ch[4]);
-      pwm.set(1, ch[1], 0, ch[5]);
-      pwm.set(2, ch[2], 0, ch[6]);
-      pwm.set(3, ch[3], 0, ch[7]);
-      pwm.set(4, ch[4], 0, ch[0]);
-      pwm.set(5, ch[5], 0, ch[1]);*/
-      for (uint8_t i = 0; i < 6; ++i) {
-        // TODO need to handle pwm.get_count() overflow somehow; maybe use delta instead of absolute time
-        uint8_t red = red_frames.evaluate(pwm.get_count() + i * 100);
-        uint8_t blue = blue_frames.evaluate(pwm.get_count() + i * 100);
-        pwm.set(i, red, 0, blue);
-      }
-      pwm.update();
+    // TODO move static vars into animation class
+    static uint16_t last_count = pwm.get_count();
+    static uint16_t timer = 0;
+
+    // TODO animation class should handle modulo (% 1000 here) since it would know the animation period
+    uint16_t count = pwm.get_count();
+    timer = (timer + uint16_t(count - last_count)) % 1000;
+    last_count = count;
+
+    // Offset zones by 100 ticks (0.4 sec)
+    for (uint8_t i = 0; i < 6; ++i) {
+      uint8_t red = red_frames.evaluate(timer + i * 100);
+      uint8_t blue = blue_frames.evaluate(timer + i * 100);
+      pwm.set(i, red, 0, blue);
     }
+
+    pwm.update();
   }
 }
 
