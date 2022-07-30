@@ -192,11 +192,9 @@ class Keyframes {
 
   Keyframe frames_[N];
   uint8_t count_ = 0;
-  uint16_t period_ = 0;
 
 public:
   void clear() { count_ = 0; }
-  void set_period(uint16_t period) { period_ = period; }
 
   bool insert(uint16_t time, uint8_t value) {
     if (count_ == N) {
@@ -215,25 +213,13 @@ public:
     return true;
   }
 
-  void debug() {
-    for (uint8_t i = 0; i < count_; ++i) {
-      serialEx.print(i);
-      serialEx.print(" @ ");
-      serialEx.print(frames_[i].time);
-      serialEx.print(" = ");
-      serialEx.println(frames_[i].value);
-    }
-  }
-
-  uint8_t evaluate(uint16_t time) {
+  uint8_t evaluate(uint16_t time, uint16_t period) {
     if (count_ == 0) {
       return 0;
     } else if (count_ == 1) {
       // NOTE the lerp logic should work with count_ == 1, so this special case isn't really necessary
       return frames_[0].value;
     }
-
-    time %= period_;
 
     // Find index of first frame later than time
     uint8_t index = 0;
@@ -253,16 +239,16 @@ public:
       // Previous keyframe wraps-around
       // [0] is next, [count_ - 1] is prev
       // time < [0] < [count_ - 1]
-      uint16_t delta = frames_[0].time + (period_ - frames_[count_ - 1].time);
+      uint16_t delta = frames_[0].time + (period - frames_[count_ - 1].time);
       uint32_t w0 = uint32_t(frames_[count_ - 1].value) * (frames_[0].time - time);
-      uint32_t w1 = uint32_t(frames_[0].value) * (period_ - frames_[count_ - 1].time + time);
+      uint32_t w1 = uint32_t(frames_[0].value) * (period - frames_[count_ - 1].time + time);
       return (w0 + w1) / delta;
     } else if (index == count_) {
       // Following keyframe wraps-around
       // [0] is next, [count_ - 1] is prev
       // [0] < [count_ - 1] < time
-      uint16_t delta = frames_[0].time + (period_ - frames_[count_ - 1].time);
-      uint32_t w0 = uint32_t(frames_[count_ - 1].value) * (period_ - time + frames_[0].time);
+      uint16_t delta = frames_[0].time + (period - frames_[count_ - 1].time);
+      uint32_t w0 = uint32_t(frames_[count_ - 1].value) * (period - time + frames_[0].time);
       uint32_t w1 = uint32_t(frames_[0].value) * (time - frames_[count_ - 1].time);
       return (w0 + w1) / delta;
     } else {
@@ -275,53 +261,72 @@ public:
   }
 };
 
-Keyframes<2> red_frames;
-Keyframes<2> blue_frames;
+template <uint8_t ZONES, uint8_t CHANNELS_PER_ZONE, uint8_t FRAMES>
+class Animation {
+  static_assert(CHANNELS_PER_ZONE == 3, "hard coded for 3 channels for now...");
+  static constexpr auto NUM_CHANNELS = ZONES * CHANNELS_PER_ZONE;
+
+  Keyframes<FRAMES> frames_[NUM_CHANNELS];
+  uint16_t last_count_;
+  uint16_t timer_ = 0;
+  uint16_t period_ = 0;
+
+public:
+  void set_period(uint16_t period) { period_ = period; }
+
+  void clear() {
+    for (auto& frame : frames_) {
+      frame.clear();
+    }
+  }
+
+  template <uint8_t C = 0, typename T>
+  void insert(uint16_t time, uint8_t zone, T duty) {
+    static_assert(C < CHANNELS_PER_ZONE, "too many channel parameters");
+    frames_[zone * CHANNELS_PER_ZONE + C].insert(time, duty);
+  }
+
+  template <uint8_t C = 0, typename T, typename... Var>
+  void insert(uint16_t time, uint8_t zone, T duty, const Var... var) {
+    insert<C>(time, zone, duty);
+    insert<C + 1, Var...>(time, zone, var...);
+  }
+
+  // the set() interface kind of sucks here, unless we put the keyframes directly into the Controller class?
+  template <typename PORT, typename OCR>
+  void animate(uPWM::Controller<PORT, OCR, ZONES, 3>& controller) {
+    uint16_t count = controller.get_count();
+    timer_ = (timer_ + uint16_t(count - last_count_)) % period_;
+    last_count_ = count;
+
+    for (uint8_t i = 0; i < ZONES; ++i) {
+      uint8_t red = frames_[i * 3].evaluate(timer_, period_);
+      uint8_t green = frames_[i * 3 + 1].evaluate(timer_, period_);
+      uint8_t blue = frames_[i * 3 + 2].evaluate(timer_, period_);
+      controller.set(i, red, green, blue);
+    }
+
+    controller.update();
+  }
+};
+
+Animation<6, 3, 2> animation;
 
 void pulse() {
   if (pwm.can_update()) {
-    // TODO move static vars into animation class
-    static uint16_t last_count = pwm.get_count();
-    static uint16_t timer = 0;
-
-    // TODO animation class should handle modulo (% 1000 here) since it would know the animation period
-    uint16_t count = pwm.get_count();
-    timer = (timer + uint16_t(count - last_count)) % 1000;
-    last_count = count;
-
-    // Offset zones by 100 ticks (0.4 sec)
-    for (uint8_t i = 0; i < 6; ++i) {
-      uint8_t red = red_frames.evaluate(timer + i * 100);
-      uint8_t blue = blue_frames.evaluate(timer + i * 100);
-      pwm.set(i, red, 0, blue);
-    }
-
-    pwm.update();
+    animation.animate(pwm);
   }
 }
 
 void do_pulse(Args) {
   idle_fn = pulse;
 
-  red_frames.clear();
-  red_frames.insert(0, 255);
-  red_frames.insert(500, 0);
-  red_frames.set_period(1000);
-  //red_frames.debug();
-
-  blue_frames.clear();
-  blue_frames.insert(0, 0);
-  blue_frames.insert(500, 255);
-  blue_frames.set_period(1000);
-  //blue_frames.debug();
-
-  /*for (uint16_t i = 0; i < 1000; i += 100) {
-    for (uint8_t j = 0; j < 100; j += 10) {
-      serialEx.print(red_frames.evaluate(i + j));
-      serialEx.print("  ");
-    }
-    serialEx.println();
-  }*/
+  animation.clear();
+  animation.set_period(1000);
+  for (uint8_t i = 0; i < 6; ++i) {
+    animation.insert(0 + i * 100, i, 255, 0, 0);
+    animation.insert(500 + i * 100, i, 0, 0, 255);
+  }
 }
 
 // Reconfigure pin mapping
