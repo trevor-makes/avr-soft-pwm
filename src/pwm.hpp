@@ -179,13 +179,16 @@ public:
     set<C + 1, Var...>(zone, var...);
   }
 
-  template <typename F>
-  void for_each_channel(F&& proc) {
-    for (uint8_t i = 0; i < ZONES * CHANNELS_PER_ZONE; ++i) {
-      uint8_t zone = i / CHANNELS_PER_ZONE;
-      uint8_t channel = i % CHANNELS_PER_ZONE;
-      proc(&channels_[i], zone, channel);
-    }
+  template <uint8_t C = 0, typename T>
+  void get(uint8_t zone, T& duty) {
+    static_assert(C < CHANNELS_PER_ZONE, "too many channel parameters");
+    duty = channels_[zone * CHANNELS_PER_ZONE + C].duty;
+  }
+
+  template <uint8_t C = 0, typename T, typename... Var>
+  void get(uint8_t zone, T& duty, Var&... var) {
+    get<C>(zone, duty);
+    get<C + 1, Var...>(zone, var...);
   }
 
   typename EVENTS::iterator event_iter() {
@@ -200,12 +203,14 @@ public:
     return dirty_ == false;
   }
 
-  void update() {
-    // TODO triple buffer would let us update more than once per cycle and keep the latest
+  bool update() {
     if (!dirty_) {
       // Update events in back buffer
       events_.back().update(channels_);
       dirty_ = true;
+      return true;
+    } else {
+      return false;
     }
   }
 

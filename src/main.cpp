@@ -139,16 +139,17 @@ void loop() {
 
 void measure_isr(Args) {
   serialEx.println("Measure pulse width on pin B5 (13 on Uno/Nano)");
-  // Toggle test pin at 2 MHz (16 MHz / 8) in an infinite loop
-  // When an ISR runs, the pin will freeze; measure the pulse width to time the ISR
+  // Toggle pin B5 in an infinite loop to generate a 2 MHz square wave (16 MHz / 8 CPU cycles)
+  // When an ISR runs it will interrupt the loop and the wave will be stuck high or low
+  // Measure the pulse width minus 1/2 period (4 CPU cycles) to find the ISR duration
   // -| 8 |- CPU cycles
   //  |   |   |- ISR length -|     |- ISR length -|
   // _/-\_/-\_:______________/-\_/-:--------------\_
-  for (;;) {
-    uIO::PinB5::set(); // 2 cycles
-    __asm__("NOP\nNOP\n"); // 2 cycles
-    uIO::PinB5::clear(); // 2 cycles
-  } // goto start, 2 cycles
+  for (;;) { // 8 CPU cycles per loop
+    uIO::PinB5::set(); // SBI, 2 cycles
+    __asm__("NOP\nNOP\n"); // 2 cycles (1 per NOP)
+    uIO::PinB5::clear(); // CBI, 2 cycles
+  } // RJMP, 2 cycles
 }
 
 void debug_pwm(Args) {
@@ -168,19 +169,17 @@ void debug_pwm(Args) {
 }
 
 void do_list(Args args) {
-  pwm.for_each_channel<>([](uPWM::Channel<PWMPins::TYPE>* info, uint8_t zone, uint8_t channel) {
-    if (channel == 0) {
-      if (zone != 0) {
-        serialEx.println();
-      }
-      serialEx.print(zone);
-      serialEx.print(": ");
-    } else {
-      serialEx.print(", ");
-    }
-    serialEx.print(info->duty);
-  });
-  serialEx.println();
+  for (uint8_t zone = 0; zone < PWM_ZONES; ++zone) {
+    uint8_t red, green, blue;
+    pwm.get(zone, red, green, blue);
+    serialEx.print(zone);
+    serialEx.print(": ");
+    serialEx.print(red);
+    serialEx.print(", ");
+    serialEx.print(green);
+    serialEx.print(", ");
+    serialEx.println(blue);
+  }
 }
 
 template <uint8_t N>
