@@ -182,90 +182,12 @@ void do_list(Args args) {
   }
 }
 
-template <uint8_t N>
-class Keyframes {
-  struct Keyframe {
-    uint8_t value;
-    uint16_t time;
-  };
-
-  Keyframe frames_[N];
-  uint8_t count_ = 0;
-
-public:
-  void clear() { count_ = 0; }
-
-  bool insert(uint16_t time, uint8_t value) {
-    if (count_ == N) {
-      return false;
-    }
-    uint8_t index = 0;
-    for (; index < count_; ++index) {
-      if (time < frames_[index].time) {
-        break;
-      }
-    }
-    memmove(&frames_[index+1], &frames_[index], (count_ - index) * sizeof(Keyframe));
-    frames_[index].time = time;
-    frames_[index].value = value;
-    ++count_;
-    return true;
-  }
-
-  uint8_t evaluate(uint16_t time, uint16_t period) {
-    if (count_ == 0) {
-      return 0;
-    } else if (count_ == 1) {
-      // NOTE the lerp logic should work with count_ == 1, so this special case isn't really necessary
-      return frames_[0].value;
-    }
-
-    // Find index of first frame later than time
-    uint8_t index = 0;
-    for (; index < count_; ++index) {
-      auto const& frame_time = frames_[index].time;
-      if (time == frame_time) {
-        // Just return the keyframe value if the time matches
-        return frames_[index].value;
-      } else if (time < frame_time) {
-        break;
-      }
-    }
-
-    // Lerp between previous and next keyframes
-    // TODO refactor redundant logic
-    if (index == 0) {
-      // Previous keyframe wraps-around
-      // [0] is next, [count_ - 1] is prev
-      // time < [0] < [count_ - 1]
-      uint16_t delta = frames_[0].time + (period - frames_[count_ - 1].time);
-      uint32_t w0 = uint32_t(frames_[count_ - 1].value) * (frames_[0].time - time);
-      uint32_t w1 = uint32_t(frames_[0].value) * (period - frames_[count_ - 1].time + time);
-      return (w0 + w1) / delta;
-    } else if (index == count_) {
-      // Following keyframe wraps-around
-      // [0] is next, [count_ - 1] is prev
-      // [0] < [count_ - 1] < time
-      uint16_t delta = frames_[0].time + (period - frames_[count_ - 1].time);
-      uint32_t w0 = uint32_t(frames_[count_ - 1].value) * (period - time + frames_[0].time);
-      uint32_t w1 = uint32_t(frames_[0].value) * (time - frames_[count_ - 1].time);
-      return (w0 + w1) / delta;
-    } else {
-      // [index - 1] < time < [index]
-      uint16_t delta = frames_[index].time - frames_[index - 1].time;
-      uint32_t w0 = uint32_t(frames_[index - 1].value) * (frames_[index].time - time);
-      uint32_t w1 = uint32_t(frames_[index].value) * (time - frames_[index - 1].time);
-      return (w0 + w1) / delta;
-    }
-  }
-};
-
 template <uint8_t ZONES, uint8_t CHANNELS_PER_ZONE, uint8_t FRAMES>
 class Animation {
   static_assert(CHANNELS_PER_ZONE == 3, "hard coded for 3 channels for now...");
   static constexpr auto NUM_CHANNELS = ZONES * CHANNELS_PER_ZONE;
 
-  Keyframes<FRAMES> frames_[NUM_CHANNELS];
+  uPWM::Keyframes<FRAMES> frames_[NUM_CHANNELS];
   uint16_t last_count_;
   uint16_t timer_ = 0;
   uint16_t period_ = 0;
