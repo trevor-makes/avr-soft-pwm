@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 
+// TODO move to a utilities header somewhere?
 template <typename T, uint8_t N = 2>
 class DoubleBuffer {
   static_assert(N == 2, "TODO implement 3+ swapping");

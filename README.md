@@ -1,8 +1,6 @@
 # AVR multi-zone LED controller
 
-The AVR timer units in an Arduino Nano allow for up to 6 hardware-controlled PWM outputs on specific pins, which Arduino exposes through the `analogWrite` function. However, by careful use of the timer interrupt and a few extra cycles, we can send PWM signals to any I/O pin using software-control.
-
-With all 18 I/O pins of an Arduino Nano under PWM control (not including D0/D1 used for Tx/Rx), we can drive up to 6 independent strings of RGB lights, as demonstrated in this example code.
+The built-in hardware PWM (pulse width modulation) feature of ATmega328p (Arduino Nano/Uno) provides up to 6 analog outputs on select pins, provided through the Arduino API as the `analogWrite` function. However, by careful use of timer interrupts and low-level GPIO control, we can instead use software to generate a PWM signal on _any_ GPIO pin. With 18 free GPIO pins (reserving D0/D1 for serial Tx/Rx), an Arduino Nano/Uno can drive 6 fully independent strings of RGB lights, as demonstrated by this example code.
 
 Distributed under the [MIT license](LICENSE.txt)
 
