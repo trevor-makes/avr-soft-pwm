@@ -57,9 +57,10 @@ using Timer2A = TimerCompare<RegOCR2A, RegCOM2A, BitOCIE2A>;
 // PWM Controller pin mapping
 constexpr const uint8_t PWM_ZONES = 6;
 constexpr const uint8_t PWM_CHANNELS = 3;
-using PWMPins = uIO::WordExtend<
-  uIO::WordExtend<uIO::PortB::Mask<0x3F>, uIO::PortC::Mask<0x3F>>,
-  uIO::WordExtend<uIO::PortD::Mask<0xFC>>>;
+using PortD = uIO::PortD::Mask<0xFC>;
+using PortC = uIO::PortC::Mask<0x3F>;
+using PortB = uIO::PortB::Mask<0x3F>;
+using PWMPins = uIO::WordExtend<PortD, PortC, PortB>;
 uPWM::Controller<PWMPins, Timer2A::value, PWM_ZONES, PWM_CHANNELS> pwm;
 
 // Hook PWM routine into timer 2 compare interrupt
