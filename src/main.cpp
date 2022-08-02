@@ -57,11 +57,12 @@ using Timer2A = TimerCompare<RegOCR2A, RegCOM2A, BitOCIE2A>;
 // PWM Controller pin mapping
 constexpr const uint8_t PWM_ZONES = 6;
 constexpr const uint8_t PWM_CHANNELS = 3;
+constexpr const uint8_t PWM_KEYFRAMES = 8;
 using PortD = uIO::PortD::Mask<0xFC>;
 using PortC = uIO::PortC::Mask<0x3F>;
 using PortB = uIO::PortB::Mask<0x3F>;
 using PWMPins = uIO::WordExtend<PortD, PortC, PortB>;
-uPWM::Controller<PWMPins, Timer2A::value, PWM_ZONES, PWM_CHANNELS> pwm;
+uPWM::Controller<PWMPins, Timer2A::value, PWM_ZONES, PWM_CHANNELS, PWM_KEYFRAMES> pwm;
 
 // Hook PWM routine into timer 2 compare interrupt
 ISR(TIMER2_COMPA_vect) {
@@ -98,6 +99,14 @@ void setup() {
   // Compile PWM timing for new values and reprogram next cycle
   pwm.update();
 
+  // Set default animation (doesn't run until do_start is called)
+  pwm.set_period(1500);
+  for (uint8_t i = 0; i < 6; ++i) {
+    pwm.add_keyframe(i, 0 + i * 100, 255, 0, 0);
+    pwm.add_keyframe(i, 500 + i * 100, 0, 255, 0);
+    pwm.add_keyframe(i, 1000 + i * 100, 0, 0, 255);
+  }
+
 #ifdef __AVR_ATmega328P__
   // Configure hardware timer
   Timer2::waveform::write(WAVEFORM_CTC); // enable CTC mode
@@ -116,9 +125,13 @@ void setup() {
 
 void debug_pwm(Args);
 void do_list(Args);
-void do_pulse(Args);
+void do_clear(Args);
+void do_start(Args);
+void do_stop(Args);
 void config_channel(Args);
 void set_channel(Args);
+void set_keyframe(Args);
+void set_period(Args);
 void set_prescaler(Args);
 void measure_isr(Args);
 
@@ -126,9 +139,13 @@ uCLI::IdleFn idle_fn = nullptr;
 
 void loop() {
   static const uCLI::Command commands[] = {
-    { "pulse", do_pulse },
     { "config", config_channel },
     { "set", set_channel },
+    { "key", set_keyframe },
+    { "period", set_period },
+    { "clear", do_clear },
+    { "start", do_start },
+    { "stop", do_stop },
     { "list", do_list },
     { "debug", debug_pwm },
     { "measure", measure_isr },
@@ -183,72 +200,16 @@ void do_list(Args args) {
   }
 }
 
-template <uint8_t ZONES, uint8_t CHANNELS_PER_ZONE, uint8_t FRAMES>
-class Animation {
-  static_assert(CHANNELS_PER_ZONE == 3, "hard coded for 3 channels for now...");
-  static constexpr auto NUM_CHANNELS = ZONES * CHANNELS_PER_ZONE;
-
-  uPWM::Keyframes<FRAMES> frames_[NUM_CHANNELS];
-  uint16_t last_count_;
-  uint16_t timer_ = 0;
-  uint16_t period_ = 0;
-
-public:
-  void set_period(uint16_t period) { period_ = period; }
-
-  void clear() {
-    for (auto& frame : frames_) {
-      frame.clear();
-    }
-  }
-
-  template <uint8_t C = 0, typename T>
-  void insert(uint16_t time, uint8_t zone, T duty) {
-    static_assert(C < CHANNELS_PER_ZONE, "too many channel parameters");
-    frames_[zone * CHANNELS_PER_ZONE + C].insert(time, duty);
-  }
-
-  template <uint8_t C = 0, typename T, typename... Var>
-  void insert(uint16_t time, uint8_t zone, T duty, const Var... var) {
-    insert<C>(time, zone, duty);
-    insert<C + 1, Var...>(time, zone, var...);
-  }
-
-  // the set() interface kind of sucks here, unless we put the keyframes directly into the Controller class?
-  template <typename PORT, typename OCR>
-  void animate(uPWM::Controller<PORT, OCR, ZONES, 3>& controller) {
-    uint16_t count = controller.get_count();
-    timer_ = (timer_ + uint16_t(count - last_count_)) % period_;
-    last_count_ = count;
-
-    for (uint8_t i = 0; i < ZONES; ++i) {
-      uint8_t red = frames_[i * 3].evaluate(timer_, period_);
-      uint8_t green = frames_[i * 3 + 1].evaluate(timer_, period_);
-      uint8_t blue = frames_[i * 3 + 2].evaluate(timer_, period_);
-      controller.set(i, red, green, blue);
-    }
-
-    controller.update();
-  }
-};
-
-Animation<6, 3, 2> animation;
-
-void pulse() {
-  if (pwm.can_update()) {
-    animation.animate(pwm);
-  }
+void do_clear(Args) {
+  pwm.clear_keyframes();
 }
 
-void do_pulse(Args) {
-  idle_fn = pulse;
+void do_start(Args) {
+  idle_fn = []() { pwm.animate(); };
+}
 
-  animation.clear();
-  animation.set_period(1000);
-  for (uint8_t i = 0; i < 6; ++i) {
-    animation.insert(0 + i * 100, i, 255, 0, 0);
-    animation.insert(500 + i * 100, i, 0, 0, 255);
-  }
+void do_stop(Args) {
+  idle_fn = nullptr;
 }
 
 // Reconfigure pin mapping
@@ -262,13 +223,25 @@ void config_channel(Args args) {
 
 // Reprogram channel
 void set_channel(Args args) {
-  idle_fn = nullptr;
   uint8_t zone = atoi(args.next());
   uint8_t red = atoi(args.next());
   uint8_t green = atoi(args.next());
   uint8_t blue = atoi(args.next());
   pwm.set(zone, red, green, blue);
   pwm.update();
+}
+
+void set_keyframe(Args args) {
+  uint8_t zone = atoi(args.next());
+  uint16_t time = atoi(args.next());
+  uint8_t red = atoi(args.next());
+  uint8_t green = atoi(args.next());
+  uint8_t blue = atoi(args.next());
+  pwm.add_keyframe(zone, time, red, green, blue);
+}
+
+void set_period(Args args) {
+  pwm.set_period(atoi(args.next()));
 }
 
 // Select PWM timer frequency

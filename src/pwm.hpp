@@ -153,12 +153,18 @@ public:
     if (count_ == N) {
       return false;
     }
+    // Find insertion index sorted by ascending time
     uint8_t index = 0;
     for (; index < count_; ++index) {
-      if (time < frames_[index].time) {
+      if (time == frames_[index].time) {
+        // Overwrite old keyframe
+        frames_[index].value = value;
+        return true;
+      } else if (time < frames_[index].time) {
         break;
       }
     }
+    // Move later keyframes back to make room and insert
     memmove(&frames_[index+1], &frames_[index], (count_ - index) * sizeof(Keyframe));
     frames_[index].time = time;
     frames_[index].value = value;
@@ -214,7 +220,7 @@ public:
   }
 };
 
-template <typename PORT, typename OCR, uint8_t ZONES, uint8_t CHANNELS_PER_ZONE>
+template <typename PORT, typename OCR, uint8_t ZONES, uint8_t CHANNELS_PER_ZONE, uint8_t KEYFRAMES>
 class Controller {
   static constexpr auto NUM_CHANNELS = ZONES * CHANNELS_PER_ZONE;
   static constexpr auto NUM_EVENTS = NUM_CHANNELS + 1;
@@ -223,9 +229,11 @@ class Controller {
   using EVENTS = Events<PORT, NUM_EVENTS>;
 
   Channel<TYPE> channels_[NUM_CHANNELS];
+  Keyframes<KEYFRAMES> keyframes_[NUM_CHANNELS];
   DoubleBuffer<EVENTS> events_;
   typename EVENTS::iterator isr_iter_;
   uint16_t counter_ = 0;
+  uint16_t period_ = 0;
   bool dirty_ = false;
 
 public:
@@ -270,26 +278,53 @@ public:
     get<C + 1, Var...>(zone, var...);
   }
 
-  typename EVENTS::iterator event_iter() {
-    return events_.front().iter();
+  void set_period(uint16_t period) {
+    period_ = period;
   }
 
-  uint16_t get_count() {
-    return counter_;
+  void clear_keyframes() {
+    for (auto& keyframe : keyframes_) {
+      keyframe.clear();
+    }
+  }
+
+  template <uint8_t C = 0, typename T>
+  void add_keyframe(uint8_t zone, uint16_t time, T duty) {
+    static_assert(C < CHANNELS_PER_ZONE, "too many channel parameters");
+    keyframes_[zone * CHANNELS_PER_ZONE + C].insert(time % period_, duty);
+  }
+
+  template <uint8_t C = 0, typename T, typename... Var>
+  void add_keyframe(uint8_t zone, uint16_t time, T duty, const Var... var) {
+    add_keyframe<C>(zone, time, duty);
+    add_keyframe<C + 1, Var...>(zone, time, var...);
+  }
+
+  typename EVENTS::iterator event_iter() {
+    return events_.front().iter();
   }
 
   bool can_update() {
     return dirty_ == false;
   }
 
-  bool update() {
-    if (!dirty_) {
+  void update() {
+    if (can_update()) {
       // Update events in back buffer
       events_.back().update(channels_);
       dirty_ = true;
-      return true;
-    } else {
-      return false;
+    }
+  }
+
+  void animate() {
+    if (can_update()) {
+      // TODO counter should be protected by interrupt disable?
+      // NOTE % is really slow so keep it out of ISR
+      counter_ %= period_;
+      for (uint8_t i = 0; i < NUM_CHANNELS; ++i) {
+        channels_[i].duty = keyframes_[i].evaluate(counter_, period_);
+      }
+      update();
     }
   }
 
