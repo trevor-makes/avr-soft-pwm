@@ -165,7 +165,7 @@ void measure_isr(Args) {
   // _/-\_/-\_:______________/-\_/-:--------------\_
   for (;;) { // 8 CPU cycles per loop
     uIO::PinB5::set(); // SBI, 2 cycles
-    __asm__("NOP\nNOP\n"); // 2 cycles (1 per NOP)
+    __asm__ __volatile__ ("nop\n nop\n"); // 2 cycles (1 per NOP)
     uIO::PinB5::clear(); // CBI, 2 cycles
   } // RJMP, 2 cycles
 }

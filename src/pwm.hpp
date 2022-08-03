@@ -21,6 +21,20 @@ public:
   }
 };
 
+// Protect a block of code from interrupts
+// AVR provides ATOMIC_BLOCK in util/atomic.h for the same purpose
+class ISRGuard {
+  uint8_t sreg;
+public:
+  ISRGuard() {
+    sreg = SREG;
+    __asm__ __volatile__ ("cli");
+  }
+  ~ISRGuard() {
+    SREG = sreg;
+  }
+};
+
 namespace uPWM {
 
 template <typename TYPE>
@@ -232,9 +246,9 @@ class Controller {
   Keyframes<KEYFRAMES> keyframes_[NUM_CHANNELS];
   DoubleBuffer<EVENTS> events_;
   typename EVENTS::iterator isr_iter_;
-  uint16_t counter_ = 0;
   uint16_t period_ = 0;
-  bool dirty_ = false;
+  volatile uint16_t counter_ = 0;
+  volatile bool dirty_ = false;
 
 public:
   void init() {
@@ -279,6 +293,9 @@ public:
   }
 
   void set_period(uint16_t period) {
+    // Prevent ISR from reading counter/period while we write them
+    auto guard = ISRGuard();
+    counter_ = 0;
     period_ = period;
   }
 
@@ -318,11 +335,13 @@ public:
 
   void animate() {
     if (can_update()) {
-      // TODO counter should be protected by interrupt disable?
-      // NOTE % is really slow so keep it out of ISR
-      counter_ %= period_;
+      uint16_t counter;
+      { // Prevent ISR from writing counter while we read it
+        auto guard = ISRGuard();
+        counter = counter_;
+      }
       for (uint8_t i = 0; i < NUM_CHANNELS; ++i) {
-        channels_[i].duty = keyframes_[i].evaluate(counter_, period_);
+        channels_[i].duty = keyframes_[i].evaluate(counter, period_);
       }
       update();
     }
@@ -331,7 +350,12 @@ public:
   void isr() {
     // When the end of the event queue is reached...
     if (!isr_iter_.has_next()) {
+      // Increment counter up to period
+      // NOTE %= is really slow so use subtraction instead
       ++counter_;
+      if (counter_ >= period_) {
+        counter_ -= period_;
+      }
       // Flip back buffer if it was updated
       if (dirty_) {
         events_.flip();
