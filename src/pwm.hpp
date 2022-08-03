@@ -188,18 +188,19 @@ public:
 
   uint8_t evaluate(uint16_t time, uint16_t period) {
     if (count_ == 0) {
+      // Return zero/black if no keyframes
       return 0;
     } else if (count_ == 1) {
-      // NOTE the lerp logic should work with count_ == 1, so this special case isn't really necessary
+      // Return exact value if only one keyframe
       return frames_[0].value;
     }
 
-    // Find index of first frame later than time
+    // Find index of first frame later than given time
     uint8_t index = 0;
     for (; index < count_; ++index) {
       auto const& frame_time = frames_[index].time;
       if (time == frame_time) {
-        // Just return the keyframe value if the time matches
+        // Return exact value if timestamps match
         return frames_[index].value;
       } else if (time < frame_time) {
         break;
@@ -207,30 +208,29 @@ public:
     }
 
     // Lerp between previous and next keyframes
-    // TODO refactor redundant logic
+    // v(t) = (v0 * (t1 - t) + v1 * (t - t0)) / (t1 - t0)
+    uint16_t delta; // t1 - t0
+    uint32_t prev; // v0 * (t1 - t)
+    uint32_t next; // v1 * (t - t0)
     if (index == 0) {
-      // Previous keyframe wraps-around
-      // [0] is next, [count_ - 1] is prev
-      // time < [0] < [count_ - 1]
-      uint16_t delta = frames_[0].time + (period - frames_[count_ - 1].time);
-      uint32_t w0 = uint32_t(frames_[count_ - 1].value) * (frames_[0].time - time);
-      uint32_t w1 = uint32_t(frames_[0].value) * (period - frames_[count_ - 1].time + time);
-      return (w0 + w1) / delta;
+      // Previous keyframe [index - 1] wraps-around to [count_ - 1]
+      // time < frames_[index].time < frames_[count_ - 1].time
+      delta = frames_[index].time + (period - frames_[count_ - 1].time);
+      prev = uint32_t(frames_[count_ - 1].value) * (frames_[index].time - time);
+      next = uint32_t(frames_[index].value) * (time + (period - frames_[count_ - 1].time));
     } else if (index == count_) {
-      // Following keyframe wraps-around
-      // [0] is next, [count_ - 1] is prev
-      // [0] < [count_ - 1] < time
-      uint16_t delta = frames_[0].time + (period - frames_[count_ - 1].time);
-      uint32_t w0 = uint32_t(frames_[count_ - 1].value) * (period - time + frames_[0].time);
-      uint32_t w1 = uint32_t(frames_[0].value) * (time - frames_[count_ - 1].time);
-      return (w0 + w1) / delta;
+      // Following keyframe [index] wraps-around to [0]
+      // frames_[0].time < frames_[index - 1].time < time
+      delta = frames_[0].time + (period - frames_[index - 1].time);
+      prev = uint32_t(frames_[index - 1].value) * (frames_[0].time + (period - time));
+      next = uint32_t(frames_[0].value) * (time - frames_[index - 1].time);
     } else {
-      // [index - 1] < time < [index]
-      uint16_t delta = frames_[index].time - frames_[index - 1].time;
-      uint32_t w0 = uint32_t(frames_[index - 1].value) * (frames_[index].time - time);
-      uint32_t w1 = uint32_t(frames_[index].value) * (time - frames_[index - 1].time);
-      return (w0 + w1) / delta;
+      // frames_[index - 1].time < time < frames_[index].time
+      delta = frames_[index].time - frames_[index - 1].time;
+      prev = uint32_t(frames_[index - 1].value) * (frames_[index].time - time);
+      next = uint32_t(frames_[index].value) * (time - frames_[index - 1].time);
     }
+    return (prev + next) / delta;
   }
 };
 
