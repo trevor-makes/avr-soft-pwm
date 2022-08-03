@@ -200,8 +200,9 @@ void do_list(Args args) {
   }
 }
 
-void do_clear(Args) {
-  pwm.clear_keyframes();
+void do_clear(Args args) {
+  uint8_t zone = atoi(args.next());
+  pwm.clear_keyframes(zone);
 }
 
 void do_start(Args) {

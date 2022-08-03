@@ -299,9 +299,9 @@ public:
     period_ = period;
   }
 
-  void clear_keyframes() {
-    for (auto& keyframe : keyframes_) {
-      keyframe.clear();
+  void clear_keyframes(uint8_t zone) {
+    for (uint8_t i = 0; i < CHANNELS_PER_ZONE; ++i) {
+      keyframes_[zone * CHANNELS_PER_ZONE + i].clear();
     }
   }
 
