@@ -206,7 +206,7 @@ void do_clear(Args args) {
 }
 
 void do_start(Args) {
-  idle_fn = []() { pwm.animate(); };
+  idle_fn = []() { pwm.update(); };
 }
 
 void do_stop(Args) {

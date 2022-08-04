@@ -37,12 +37,6 @@ public:
 
 namespace uPWM {
 
-template <typename TYPE>
-struct Channel {
-  TYPE pin;
-  uint8_t duty;
-};
-
 template <typename PORT, uint8_t SIZE>
 class Events {
   using TYPE = typename PORT::TYPE;
@@ -56,15 +50,9 @@ class Events {
   uint8_t count_ = 0;
 
 public:
-  // TODO could take a channel iterator instead
-  template <uint8_t N>
-  void update(Channel<TYPE> (&channels)[N]) {
+  void reset() {
     count_ = 0;
-    insert({0, 0});
-    for (auto& channel : channels) {
-      insert(channel);
-    }
-    compile();
+    insert(0, 0);
   }
 
   class iterator {
@@ -98,21 +86,20 @@ public:
     return iterator(*this);
   }
 
-protected:
-  void insert(Channel<TYPE> const& channel) {
+  void insert(TYPE pin, uint8_t value) {
     // 100% duty cycle channels never turn off, so they don't need an event
-    if (channel.duty == 255) {
+    if (value == 255) {
       return;
     }
-    // Find index at which to insert, sorted by ascending duty cycle
+    // Find index at which to insert, sorted by ascending value
     uint8_t index = 0;
     for (; index < count_; ++index) {
       auto& event = events_[index];
-      if (event.delta == channel.duty) {
-        // Coalesce channels with the same duty cycle; return without insertion
-        event.pins |= channel.pin;
+      if (event.delta == value) {
+        // Coalesce channels with the same value; return without insertion
+        event.pins |= pin;
         return;
-      } else if (event.delta > channel.duty) {
+      } else if (event.delta > value) {
         // Found the index to insert at, so break loop early
         break;
       }
@@ -121,8 +108,8 @@ protected:
     auto& event = events_[index];
     memmove(&event + 1, &event, (count_ - index) * sizeof(Event));
     // Reset inserted event
-    event.pins = channel.pin;
-    event.delta = channel.duty;
+    event.pins = pin;
+    event.delta = value;
     // Update size for inserted event
     ++count_;
   }
@@ -242,7 +229,7 @@ class Controller {
   using TYPE = typename PORT::TYPE;
   using EVENTS = Events<PORT, NUM_EVENTS>;
 
-  Channel<TYPE> channels_[NUM_CHANNELS];
+  TYPE pins_[NUM_CHANNELS];
   Keyframes<KEYFRAMES> keyframes_[NUM_CHANNELS];
   DoubleBuffer<EVENTS> events_;
   typename EVENTS::iterator isr_iter_;
@@ -258,8 +245,7 @@ public:
   template <uint8_t C = 0, typename T>
   void config(uint8_t zone, T index) {
     static_assert(C < CHANNELS_PER_ZONE, "too many channel parameters");
-    channels_[zone * CHANNELS_PER_ZONE + C].pin = TYPE(1) << index;
-    channels_[zone * CHANNELS_PER_ZONE + C].duty = 0;
+    pins_[zone * CHANNELS_PER_ZONE + C] = TYPE(1) << index;
   }
 
   template <uint8_t C = 0, typename T, typename... Var>
@@ -271,7 +257,8 @@ public:
   template <uint8_t C = 0, typename T>
   void set(uint8_t zone, T duty) {
     static_assert(C < CHANNELS_PER_ZONE, "too many channel parameters");
-    channels_[zone * CHANNELS_PER_ZONE + C].duty = duty;
+    keyframes_[zone * CHANNELS_PER_ZONE + C].clear();
+    keyframes_[zone * CHANNELS_PER_ZONE + C].insert(0, duty);
   }
 
   template <uint8_t C = 0, typename T, typename... Var>
@@ -283,7 +270,7 @@ public:
   template <uint8_t C = 0, typename T>
   void get(uint8_t zone, T& duty) {
     static_assert(C < CHANNELS_PER_ZONE, "too many channel parameters");
-    duty = channels_[zone * CHANNELS_PER_ZONE + C].duty;
+    duty = keyframes_[zone * CHANNELS_PER_ZONE + C].evaluate(0, period_);
   }
 
   template <uint8_t C = 0, typename T, typename... Var>
@@ -327,23 +314,20 @@ public:
 
   void update() {
     if (can_update()) {
-      // Update events in back buffer
-      events_.back().update(channels_);
-      dirty_ = true;
-    }
-  }
-
-  void animate() {
-    if (can_update()) {
       uint16_t counter;
       { // Prevent ISR from writing counter while we read it
         auto guard = ISRGuard();
         counter = counter_;
       }
+      // Recompile PWM event list with updated values
+      auto& events = events_.back();
+      events.reset();
       for (uint8_t i = 0; i < NUM_CHANNELS; ++i) {
-        channels_[i].duty = keyframes_[i].evaluate(counter, period_);
+        events.insert(pins_[i], keyframes_[i].evaluate(counter, period_));
       }
-      update();
+      events.compile();
+      // Swap event buffers when the PWM cycle resets
+      dirty_ = true;
     }
   }
 
