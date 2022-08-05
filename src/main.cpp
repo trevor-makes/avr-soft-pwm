@@ -72,6 +72,27 @@ ISR(TIMER2_COMPA_vect) {
 #error Need to provide configuration for current platform. See __AVR_ATmega328P__ configuration above.
 #endif
 
+void set_default(Args) {
+  pwm.clear_all();
+  constexpr uint8_t TIME = 0;
+  pwm.set_zone(0, TIME, 255, 0, 191);
+  pwm.set_zone(1, TIME, 191, 0, 63);
+  pwm.set_zone(2, TIME, 191, 31, 63);
+  pwm.set_zone(3, TIME, 191, 63, 63);
+  pwm.set_zone(4, TIME, 255, 63, 15);
+  pwm.set_zone(5, TIME, 255, 31, 0);
+}
+
+void set_rainbow(Args) {
+  pwm.clear_all();
+  pwm.set_period(1500);
+  for (uint8_t i = 0; i < 6; ++i) {
+    pwm.set_zone(i, 0 + i * 100, 255, 0, 0);
+    pwm.set_zone(i, 500 + i * 100, 0, 255, 0);
+    pwm.set_zone(i, 1000 + i * 100, 0, 0, 255);
+  }
+}
+
 void setup() {
   pwm.init();
 
@@ -88,24 +109,7 @@ void setup() {
   pwm.config(4, B + 1, B + 2, B + 0); // r4, g4, b4
   pwm.config(5, D + 3, D + 4, D + 2); // r5, g5, b5
 
-  // Set RGB value (duty cycle) to default gradient
-  pwm.set(0, 255, 0, 191);
-  pwm.set(1, 191, 0, 63);
-  pwm.set(2, 191, 31, 63);
-  pwm.set(3, 191, 63, 63);
-  pwm.set(4, 255, 63, 15);
-  pwm.set(5, 255, 31, 0);
-
-  // Compile PWM timing for new values and reprogram next cycle
-  pwm.update();
-
-  // Set default animation (doesn't run until do_start is called)
-  pwm.set_period(1500);
-  for (uint8_t i = 0; i < 6; ++i) {
-    pwm.add_keyframe(i, 0 + i * 100, 255, 0, 0);
-    pwm.add_keyframe(i, 500 + i * 100, 0, 255, 0);
-    pwm.add_keyframe(i, 1000 + i * 100, 0, 0, 255);
-  }
+  set_default({});
 
 #ifdef __AVR_ATmega328P__
   // Configure hardware timer
@@ -126,33 +130,30 @@ void setup() {
 void debug_pwm(Args);
 void do_list(Args);
 void do_clear(Args);
-void do_start(Args);
-void do_stop(Args);
 void config_channel(Args);
 void set_channel(Args);
-void set_keyframe(Args);
+void set_zone(Args);
 void set_period(Args);
 void set_prescaler(Args);
 void measure_isr(Args);
 
-uCLI::IdleFn idle_fn = nullptr;
-
 void loop() {
   static const uCLI::Command commands[] = {
     { "config", config_channel },
-    { "set", set_channel },
-    { "key", set_keyframe },
+    { "channel", set_channel },
+    { "zone", set_zone },
     { "period", set_period },
     { "clear", do_clear },
-    { "start", do_start },
-    { "stop", do_stop },
+    { "default", set_default },
+    { "rainbow", set_rainbow },
     { "list", do_list },
     { "debug", debug_pwm },
     { "measure", measure_isr },
     { "prescaler", set_prescaler },
   };
 
-  serialCli.run_once(commands, idle_fn);
+  // Update PWM animation while waiting for CLI input
+  serialCli.run_once(commands, []() { pwm.update(); });
 }
 
 void measure_isr(Args) {
@@ -202,15 +203,7 @@ void do_list(Args args) {
 
 void do_clear(Args args) {
   uint8_t zone = atoi(args.next());
-  pwm.clear_keyframes(zone);
-}
-
-void do_start(Args) {
-  idle_fn = []() { pwm.update(); };
-}
-
-void do_stop(Args) {
-  idle_fn = nullptr;
+  pwm.clear_zone(zone);
 }
 
 // Reconfigure pin mapping
@@ -224,21 +217,19 @@ void config_channel(Args args) {
 
 // Reprogram channel
 void set_channel(Args args) {
-  uint8_t zone = atoi(args.next());
-  uint8_t red = atoi(args.next());
-  uint8_t green = atoi(args.next());
-  uint8_t blue = atoi(args.next());
-  pwm.set(zone, red, green, blue);
-  pwm.update();
+  uint8_t channel = atoi(args.next());
+  uint16_t time = atoi(args.next());
+  uint8_t value = atoi(args.next());
+  pwm.set_channel(channel, time, value);
 }
 
-void set_keyframe(Args args) {
+void set_zone(Args args) {
   uint8_t zone = atoi(args.next());
   uint16_t time = atoi(args.next());
   uint8_t red = atoi(args.next());
   uint8_t green = atoi(args.next());
   uint8_t blue = atoi(args.next());
-  pwm.add_keyframe(zone, time, red, green, blue);
+  pwm.set_zone(zone, time, red, green, blue);
 }
 
 void set_period(Args args) {

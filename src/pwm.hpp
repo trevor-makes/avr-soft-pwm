@@ -254,17 +254,20 @@ public:
     config<C + 1, Var...>(zone, var...);
   }
 
+  void set_channel(uint8_t channel, uint16_t time, uint8_t duty) {
+    keyframes_[channel].insert(time % period_, duty);
+  }
+
   template <uint8_t C = 0, typename T>
-  void set(uint8_t zone, T duty) {
+  void set_zone(uint8_t zone, uint16_t time, T duty) {
     static_assert(C < CHANNELS_PER_ZONE, "too many channel parameters");
-    keyframes_[zone * CHANNELS_PER_ZONE + C].clear();
-    keyframes_[zone * CHANNELS_PER_ZONE + C].insert(0, duty);
+    set_channel(zone * CHANNELS_PER_ZONE + C, time, duty);
   }
 
   template <uint8_t C = 0, typename T, typename... Var>
-  void set(uint8_t zone, T duty, const Var... var) {
-    set<C>(zone, duty);
-    set<C + 1, Var...>(zone, var...);
+  void set_zone(uint8_t zone, uint16_t time, T duty, const Var... var) {
+    set_zone<C>(zone, time, duty);
+    set_zone<C + 1, Var...>(zone, time, var...);
   }
 
   template <uint8_t C = 0, typename T>
@@ -286,22 +289,16 @@ public:
     period_ = period;
   }
 
-  void clear_keyframes(uint8_t zone) {
+  void clear_zone(uint8_t zone) {
     for (uint8_t i = 0; i < CHANNELS_PER_ZONE; ++i) {
       keyframes_[zone * CHANNELS_PER_ZONE + i].clear();
     }
   }
 
-  template <uint8_t C = 0, typename T>
-  void add_keyframe(uint8_t zone, uint16_t time, T duty) {
-    static_assert(C < CHANNELS_PER_ZONE, "too many channel parameters");
-    keyframes_[zone * CHANNELS_PER_ZONE + C].insert(time % period_, duty);
-  }
-
-  template <uint8_t C = 0, typename T, typename... Var>
-  void add_keyframe(uint8_t zone, uint16_t time, T duty, const Var... var) {
-    add_keyframe<C>(zone, time, duty);
-    add_keyframe<C + 1, Var...>(zone, time, var...);
+  void clear_all() {
+    for (auto& keyframe : keyframes_) {
+      keyframe.clear();
+    }
   }
 
   typename EVENTS::iterator event_iter() {
