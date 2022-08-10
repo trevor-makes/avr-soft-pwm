@@ -62,7 +62,7 @@ using PortD = uIO::PortD::Mask<0xFC>;
 using PortC = uIO::PortC::Mask<0x3F>;
 using PortB = uIO::PortB::Mask<0x3F>;
 using PWMPins = uIO::WordExtend<PortD, PortC, PortB>;
-uPWM::Controller<PWMPins, Timer2A::value, PWM_ZONES, PWM_CHANNELS, PWM_KEYFRAMES> pwm;
+uPWM::Controller<PWMPins, Timer2A::value, PWM_ZONES * PWM_CHANNELS, PWM_KEYFRAMES> pwm;
 
 // Hook PWM routine into timer 2 compare interrupt
 ISR(TIMER2_COMPA_vect) {
@@ -75,26 +75,26 @@ ISR(TIMER2_COMPA_vect) {
 void set_default(Args) {
   pwm.clear_all();
   constexpr uint8_t TIME = 0;
-  pwm.set_zone(0, TIME, 255, 0, 191);
-  pwm.set_zone(1, TIME, 191, 0, 63);
-  pwm.set_zone(2, TIME, 191, 31, 63);
-  pwm.set_zone(3, TIME, 191, 63, 63);
-  pwm.set_zone(4, TIME, 255, 63, 15);
-  pwm.set_zone(5, TIME, 255, 31, 0);
+  pwm.set_keyframe(0, TIME, 255, 0, 191);
+  pwm.set_keyframe(1, TIME, 191, 0, 63);
+  pwm.set_keyframe(2, TIME, 191, 31, 63);
+  pwm.set_keyframe(3, TIME, 191, 63, 63);
+  pwm.set_keyframe(4, TIME, 255, 63, 15);
+  pwm.set_keyframe(5, TIME, 255, 31, 0);
 }
 
 void set_rainbow(Args) {
   pwm.clear_all();
   pwm.set_period(1500);
   for (uint8_t i = 0; i < 6; ++i) {
-    pwm.set_zone(i, 0 + i * 100, 255, 0, 0);
-    pwm.set_zone(i, 500 + i * 100, 0, 255, 0);
-    pwm.set_zone(i, 1000 + i * 100, 0, 0, 255);
+    pwm.set_keyframe(i, 0 + i * 100, 255, 0, 0);
+    pwm.set_keyframe(i, 500 + i * 100, 0, 255, 0);
+    pwm.set_keyframe(i, 1000 + i * 100, 0, 0, 255);
   }
 }
 
 void setup() {
-  pwm.init();
+  PWMPins::config_output();
 
   // Configure mapping from zone/channel to bit within port register
   //     7  6  5  4  3  2  1  0
@@ -102,12 +102,12 @@ void setup() {
   // C [ -  - g0 r0 b0 g1 r1 b1]
   // D [g2 r2 b2 g5 r5 b5  -  -]
   constexpr auto B = 0, C = 8, D = 16;
-  pwm.config(0, C + 4, C + 5, C + 3); // r0, g0, b0
-  pwm.config(1, C + 1, C + 2, C + 0); // r1, g1, b1
-  pwm.config(2, D + 6, D + 7, D + 5); // r2, g2, b2
-  pwm.config(3, B + 4, B + 5, B + 3); // r3, g3, b3
-  pwm.config(4, B + 1, B + 2, B + 0); // r4, g4, b4
-  pwm.config(5, D + 3, D + 4, D + 2); // r5, g5, b5
+  pwm.config_pins(0, C + 4, C + 5, C + 3); // r0, g0, b0
+  pwm.config_pins(1, C + 1, C + 2, C + 0); // r1, g1, b1
+  pwm.config_pins(2, D + 6, D + 7, D + 5); // r2, g2, b2
+  pwm.config_pins(3, B + 4, B + 5, B + 3); // r3, g3, b3
+  pwm.config_pins(4, B + 1, B + 2, B + 0); // r4, g4, b4
+  pwm.config_pins(5, D + 3, D + 4, D + 2); // r5, g5, b5
 
   set_default({});
 
@@ -188,9 +188,16 @@ void debug_pwm(Args) {
 }
 
 void do_list(Args args) {
+  // TODO rework this for keyframes; was originally for static displays
+  // Individual channels can have keyframes at different times, so can't always lump RGB together
+  // Maybe have this spit out commands to generate display for copy/paste export
   for (uint8_t zone = 0; zone < PWM_ZONES; ++zone) {
+    uint8_t keyframe = 0;
+    uint16_t time;
     uint8_t red, green, blue;
-    pwm.get(zone, red, green, blue);
+    pwm.get_keyframe(zone * PWM_CHANNELS + 0, keyframe, time, red);
+    pwm.get_keyframe(zone * PWM_CHANNELS + 1, keyframe, time, green);
+    pwm.get_keyframe(zone * PWM_CHANNELS + 2, keyframe, time, blue);
     serialEx.print(zone);
     serialEx.print(": ");
     serialEx.print(red);
@@ -203,7 +210,7 @@ void do_list(Args args) {
 
 void do_clear(Args args) {
   uint8_t zone = atoi(args.next());
-  pwm.clear_zone(zone);
+  pwm.clear_zone<PWM_CHANNELS>(zone);
 }
 
 // Reconfigure pin mapping
@@ -212,7 +219,7 @@ void config_channel(Args args) {
   uint8_t red = atoi(args.next());
   uint8_t green = atoi(args.next());
   uint8_t blue = atoi(args.next());
-  pwm.config(zone, red, green, blue);
+  pwm.config_pins(zone, red, green, blue);
 }
 
 // Reprogram channel
@@ -220,7 +227,7 @@ void set_channel(Args args) {
   uint8_t channel = atoi(args.next());
   uint16_t time = atoi(args.next());
   uint8_t value = atoi(args.next());
-  pwm.set_channel(channel, time, value);
+  pwm.set_keyframe(channel, time, value);
 }
 
 void set_zone(Args args) {
@@ -229,7 +236,7 @@ void set_zone(Args args) {
   uint8_t red = atoi(args.next());
   uint8_t green = atoi(args.next());
   uint8_t blue = atoi(args.next());
-  pwm.set_zone(zone, time, red, green, blue);
+  pwm.set_keyframe(zone, time, red, green, blue);
 }
 
 void set_period(Args args) {

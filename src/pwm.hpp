@@ -151,6 +151,16 @@ class Keyframes {
 public:
   void clear() { count_ = 0; }
 
+  bool get(uint8_t index, uint16_t& time, uint8_t& value) {
+    if (index < count_) {
+      time = frames_[index].time;
+      value = frames_[index].value;
+      return true;
+    } else {
+      return false;
+    }
+  }
+
   bool insert(uint16_t time, uint8_t value) {
     if (count_ == N) {
       return false;
@@ -222,16 +232,13 @@ public:
   }
 };
 
-template <typename PORT, typename OCR, uint8_t ZONES, uint8_t CHANNELS_PER_ZONE, uint8_t KEYFRAMES>
+template <typename PORT, typename OCR, uint8_t N_CHANNELS, uint8_t N_KEYFRAMES>
 class Controller {
-  static constexpr auto NUM_CHANNELS = ZONES * CHANNELS_PER_ZONE;
-  static constexpr auto NUM_EVENTS = NUM_CHANNELS + 1;
-
   using TYPE = typename PORT::TYPE;
-  using EVENTS = Events<TYPE, NUM_EVENTS>;
+  using EVENTS = Events<TYPE, N_CHANNELS + 1>;
 
-  TYPE pins_[NUM_CHANNELS];
-  Keyframes<KEYFRAMES> keyframes_[NUM_CHANNELS];
+  TYPE pins_[N_CHANNELS];
+  Keyframes<N_KEYFRAMES> keyframes_[N_CHANNELS];
   DoubleBuffer<EVENTS> events_;
   typename EVENTS::iterator isr_iter_;
   uint16_t period_ = 0;
@@ -239,48 +246,38 @@ class Controller {
   volatile bool dirty_ = false;
 
 public:
-  void init() {
-    PORT::config_output();
-  }
-
   template <uint8_t C = 0, typename T>
-  void config(uint8_t zone, T index) {
-    static_assert(C < CHANNELS_PER_ZONE, "too many channel parameters");
-    pins_[zone * CHANNELS_PER_ZONE + C] = TYPE(1) << index;
+  void config_pins(uint8_t channel, T bit_index) {
+    pins_[channel + C] = TYPE(1) << bit_index;
   }
 
   template <uint8_t C = 0, typename T, typename... Var>
-  void config(uint8_t zone, T index, const Var... var) {
-    config<C>(zone, index);
-    config<C + 1, Var...>(zone, var...);
-  }
-
-  void set_channel(uint8_t channel, uint16_t time, uint8_t duty) {
-    keyframes_[channel].insert(time % period_, duty);
-  }
-
-  template <uint8_t C = 0, typename T>
-  void set_zone(uint8_t zone, uint16_t time, T duty) {
-    static_assert(C < CHANNELS_PER_ZONE, "too many channel parameters");
-    set_channel(zone * CHANNELS_PER_ZONE + C, time, duty);
-  }
-
-  template <uint8_t C = 0, typename T, typename... Var>
-  void set_zone(uint8_t zone, uint16_t time, T duty, const Var... var) {
-    set_zone<C>(zone, time, duty);
-    set_zone<C + 1, Var...>(zone, time, var...);
+  void config_pins(uint8_t channel, T bit_index, const Var... var) {
+    // Index by multiple of parameter count
+    if (C == 0) {
+      channel *= 1 + sizeof...(Var);
+    }
+    config_pins<C>(channel, bit_index);
+    config_pins<C + 1, Var...>(channel, var...);
   }
 
   template <uint8_t C = 0, typename T>
-  void get(uint8_t zone, T& duty) {
-    static_assert(C < CHANNELS_PER_ZONE, "too many channel parameters");
-    duty = keyframes_[zone * CHANNELS_PER_ZONE + C].evaluate(0, period_);
+  void set_keyframe(uint8_t channel, uint16_t time, T value) {
+    keyframes_[channel + C].insert(time % period_, value);
   }
 
   template <uint8_t C = 0, typename T, typename... Var>
-  void get(uint8_t zone, T& duty, Var&... var) {
-    get<C>(zone, duty);
-    get<C + 1, Var...>(zone, var...);
+  void set_keyframe(uint8_t channel, uint16_t time, T value, const Var... var) {
+    // Index by multiple of parameter count
+    if (C == 0) {
+      channel *= 1 + sizeof...(Var);
+    }
+    set_keyframe<C>(channel, time, value);
+    set_keyframe<C + 1, Var...>(channel, time, var...);
+  } 
+
+  bool get_keyframe(uint8_t channel, uint8_t index, uint16_t& time, uint8_t& value) {
+    return keyframes_[channel].get(index, time, value);
   }
 
   void set_period(uint16_t period) {
@@ -290,6 +287,7 @@ public:
     period_ = period;
   }
 
+  template <uint8_t CHANNELS_PER_ZONE = 1>
   void clear_zone(uint8_t zone) {
     for (uint8_t i = 0; i < CHANNELS_PER_ZONE; ++i) {
       keyframes_[zone * CHANNELS_PER_ZONE + i].clear();
@@ -320,7 +318,7 @@ public:
       // Recompile PWM event list with updated values
       auto& events = events_.back();
       events.reset();
-      for (uint8_t i = 0; i < NUM_CHANNELS; ++i) {
+      for (uint8_t i = 0; i < N_CHANNELS; ++i) {
         events.insert(pins_[i], keyframes_[i].evaluate(counter, period_));
       }
       events.compile();
