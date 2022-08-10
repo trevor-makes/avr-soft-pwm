@@ -37,10 +37,8 @@ public:
 
 namespace uPWM {
 
-template <typename PORT, uint8_t SIZE>
+template <typename TYPE, uint8_t SIZE>
 class Events {
-  using TYPE = typename PORT::TYPE;
-
   struct Event {
     TYPE pins;
     uint8_t delta;
@@ -51,8 +49,9 @@ class Events {
 
 public:
   void reset() {
-    count_ = 0;
-    insert(0, 0);
+    // Reserve first event for initial pin state
+    events_[0].pins = 0;
+    count_ = 1;
   }
 
   class iterator {
@@ -87,16 +86,20 @@ public:
   }
 
   void insert(TYPE pin, uint8_t value) {
-    // 100% duty cycle channels never turn off, so they don't need an event
-    if (value == 255) {
+    // Store the initial state of all pins in event 0
+    if (value > 0) {
+      events_[0].pins |= pin;
+    }
+    // 0% and 100% duty cycle channels never change state, so they don't need events
+    if (value == 0 || value == 255) {
       return;
     }
     // Find index at which to insert, sorted by ascending value
-    uint8_t index = 0;
+    uint8_t index = 1;
     for (; index < count_; ++index) {
       auto& event = events_[index];
       if (event.delta == value) {
-        // Coalesce channels with the same value; return without insertion
+        // Event at this time already exists; combine pins and return
         event.pins |= pin;
         return;
       } else if (event.delta > value) {
@@ -116,24 +119,22 @@ public:
 
   // Pre-compute timer delta and accumulate toggled pins
   void compile() {
-    TYPE output = PORT::MASK;
+    TYPE output = events_[0].pins;
     uint8_t elapsed = 0;
-    for (uint8_t index = 0; index < count_; ++index) {
+    for (uint8_t index = 1; index < count_; ++index) {
       auto& event = events_[index];
+      auto& prev = events_[index - 1];
       // Clear output pins toggled by event
       output &= ~event.pins;
       event.pins = output;
-      if (index + 1 < count_) {
-        // Compute delta to next event
-        auto& next = events_[index + 1];
-        event.delta = next.delta - elapsed - 1; // OCR = N - 1 sets timer to N cycles
-        elapsed = next.delta;
-      } else {
-        // Set final delta for 255 cycles total
-        event.delta = 254 - elapsed; // OCR = 254 sets timer to 255 cycles
-        break;
-      }
+      // Compute timer delta between events
+      // NOTE subtract 1 because the timer will delay at least 1 cycle
+      prev.delta = event.delta - elapsed - 1;
+      elapsed = event.delta;
     }
+    // Set final delta for 255 cycles from first event
+    // NOTE setting timer to 254 delays for 255 cycles
+    events_[count_ - 1].delta = 254 - elapsed;
   }
 };
 
@@ -227,7 +228,7 @@ class Controller {
   static constexpr auto NUM_EVENTS = NUM_CHANNELS + 1;
 
   using TYPE = typename PORT::TYPE;
-  using EVENTS = Events<PORT, NUM_EVENTS>;
+  using EVENTS = Events<TYPE, NUM_EVENTS>;
 
   TYPE pins_[NUM_CHANNELS];
   Keyframes<KEYFRAMES> keyframes_[NUM_CHANNELS];
