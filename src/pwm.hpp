@@ -300,10 +300,6 @@ public:
     }
   }
 
-  typename EVENTS::iterator event_iter() {
-    return events_.front().iter();
-  }
-
   bool can_update() {
     return dirty_ == false;
   }

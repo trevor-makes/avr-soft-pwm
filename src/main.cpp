@@ -127,14 +127,12 @@ void setup() {
   while (!Serial) {}
 }
 
-void debug_pwm(Args);
 void do_list(Args);
 void do_clear(Args);
 void config_channel(Args);
 void set_channel(Args);
 void set_zone(Args);
 void set_period(Args);
-void set_prescaler(Args);
 void measure_isr(Args);
 
 void loop() {
@@ -147,9 +145,7 @@ void loop() {
     { "default", set_default },
     { "rainbow", set_rainbow },
     { "list", do_list },
-    { "debug", debug_pwm },
     { "measure", measure_isr },
-    { "prescaler", set_prescaler },
   };
 
   // Update PWM animation while waiting for CLI input
@@ -169,22 +165,6 @@ void measure_isr(Args) {
     __asm__ __volatile__ ("nop\n nop\n"); // 2 cycles (1 per NOP)
     uIO::PinB5::clear(); // CBI, 2 cycles
   } // RJMP, 2 cycles
-}
-
-void debug_pwm(Args) {
-  auto iter = pwm.event_iter();
-  while (iter.has_next()) {
-    auto event = iter.next();
-    // Print the value of each output bit this frame
-    // TODO fix the leading zeros so bits line up vertically, like format_hex in uMon
-    serialEx.print(event->pins, BIN);
-    serialEx.print(" for ");
-    // Print duty cycle of this frame (ticks * 100 / 255)
-    // NOTE [/ 256] is within decimal precision of and much faster than [/ 255] (should compile to [>> 8])
-    uint16_t ticks = event->delta + 1;
-    serialEx.print((ticks * 100 + 127) / 256);
-    serialEx.println("%");
-  };
 }
 
 void do_list(Args args) {
@@ -241,10 +221,4 @@ void set_zone(Args args) {
 
 void set_period(Args args) {
   pwm.set_period(atoi(args.next()));
-}
-
-// Select PWM timer frequency
-void set_prescaler(Args args) {
-  uint8_t prescaler = atoi(args.next());
-  Timer2::prescaler::write(prescaler);
 }
