@@ -157,31 +157,38 @@ void loop() {
 }
 
 void measure_isr(Args args) {
-  // Optionally disable selected ISR
-  while (args.has_next()) {
+  serialEx.println("Connect scope to pin D0 (Rx) and single trigger on pulse width > 1 us to measure ISR");
+
+  // Disable Rx on pin D0 so we can use it as a digital I/O
+  Serial.end();
+  uIO::PinD0::config_output();
+
+  // Multiple ISRs can fire back-to-back and appear as one longer ISR
+  // Use these options to isolate one ISR at a time
+  if (args.has_next()) {
     auto next = args.next();
-    if (strcmp(next, "!pwm") == 0) {
+    if (strcmp(next, "micros") == 0) {
       // Disable PWM ISR
       Timer2A::interrupt::clear();
-    } else if (strcmp(next, "!micros") == 0) {
+      // Enable Arduino micros ISR
+      Timer0_OVF::set();
+    } else if (strcmp(next, "pwm") == 0) {
       // Disable Arduino micros ISR
       Timer0_OVF::clear();
     }
   }
-  serialEx.println("Measure pulse width on pin B5 (13 on Uno/Nano)");
-  // Toggle pin B5 in an infinite loop to generate a 2 MHz square wave (16 MHz / 8 CPU cycles)
-  // When an ISR runs it will interrupt the loop and the wave will be stuck high or low
-  // Measure the pulse width minus 1/2 period (4 CPU cycles) to find the ISR duration:
-  // -| 8 |- CPU cycles
+
+  // Toggle pin D0 (Rx) in an infinite loop to generate a 2 MHz square wave (16 MHz / 8 CPU cycles)
+  // When an ISR runs it will interrupt the loop and the wave will be stuck high or low like so:
+  // -| 8 |- CPU cycles (0.5 us)
   //  |   |   |- ISR length -|     |- ISR length -|
   // _/-\_/-\_:______________/-\_/-:--------------\_
-  // NOTE PWM will occasionally flip B5 mid-ISR; in that case, subtract 8 CPU cycles like so:
-  //          |- ISR length -|
-  // _/-\_/-\_:___________/--:-\_/-\_
+  // Measure the pulse width minus 1/2 period (4 CPU cycles, 0.25 us) to compute the ISR duration
+  // Reset the board to exit the loop and resume normal function
   for (;;) { // 8 CPU cycles per loop
-    uIO::PinB5::set(); // SBI, 2 cycles
+    uIO::PinD0::set(); // SBI, 2 cycles
     __asm__ __volatile__ ("nop\n nop\n"); // 2 cycles (1 per NOP)
-    uIO::PinB5::clear(); // CBI, 2 cycles
+    uIO::PinD0::clear(); // CBI, 2 cycles
   } // RJMP, 2 cycles
 }
 
