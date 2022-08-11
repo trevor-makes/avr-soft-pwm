@@ -68,6 +68,10 @@ uPWM::Controller<PWMPins, Timer2A::value, PWM_ZONES * PWM_CHANNELS, PWM_KEYFRAME
 ISR(TIMER2_COMPA_vect) {
   pwm.isr();
 }
+
+// Timer0 overflow used by Arduino for micros/millis/etc
+uIO_REG(TIMSK0)
+using Timer0_OVF = RegTIMSK0::Bit<TOIE0>;
 #else
 #error Need to provide configuration for current platform. See __AVR_ATmega328P__ configuration above.
 #endif
@@ -152,14 +156,28 @@ void loop() {
   serialCli.run_once(commands, []() { pwm.update(); });
 }
 
-void measure_isr(Args) {
+void measure_isr(Args args) {
+  // Optionally disable selected ISR
+  while (args.has_next()) {
+    auto next = args.next();
+    if (strcmp(next, "!pwm") == 0) {
+      // Disable PWM ISR
+      Timer2A::interrupt::clear();
+    } else if (strcmp(next, "!micros") == 0) {
+      // Disable Arduino micros ISR
+      Timer0_OVF::clear();
+    }
+  }
   serialEx.println("Measure pulse width on pin B5 (13 on Uno/Nano)");
   // Toggle pin B5 in an infinite loop to generate a 2 MHz square wave (16 MHz / 8 CPU cycles)
   // When an ISR runs it will interrupt the loop and the wave will be stuck high or low
-  // Measure the pulse width minus 1/2 period (4 CPU cycles) to find the ISR duration
+  // Measure the pulse width minus 1/2 period (4 CPU cycles) to find the ISR duration:
   // -| 8 |- CPU cycles
   //  |   |   |- ISR length -|     |- ISR length -|
   // _/-\_/-\_:______________/-\_/-:--------------\_
+  // NOTE PWM will occasionally flip B5 mid-ISR; in that case, subtract 8 CPU cycles like so:
+  //          |- ISR length -|
+  // _/-\_/-\_:___________/--:-\_/-\_
   for (;;) { // 8 CPU cycles per loop
     uIO::PinB5::set(); // SBI, 2 cycles
     __asm__ __volatile__ ("nop\n nop\n"); // 2 cycles (1 per NOP)
