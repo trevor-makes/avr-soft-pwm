@@ -121,6 +121,12 @@ void setup() {
 
   PWMTimer::config();
 
+  // OPTIONAL Disable Arduino micros interrupt (will break micros/millis/delay/etc!)
+  // Software PWM will work without disabling this, but it causes jitter observable with a scope
+  // I couldn't tell the difference with LEDs, but it might be noticible with motors or audio
+  // Feel free to remove this if micros is needed
+  MicrosTimer::disable_isr();
+
   // Establish serial connection with computer
   Serial.begin(9600);
   while (!Serial) {}
@@ -163,7 +169,10 @@ void measure_isr(Args args) {
   // Use these options to isolate one ISR at a time
   if (args.has_next()) {
     auto next = args.next();
-    if (strcmp(next, "micros") == 0) {
+    if (strcmp(next, "both") == 0) {
+      MicrosTimer::enable_isr();
+    } else if (strcmp(next, "micros") == 0) {
+      MicrosTimer::enable_isr();
       // Only want micros, so disable PWM
       PWMTimer::disable_isr();
     } else if (strcmp(next, "pwm") == 0) {
