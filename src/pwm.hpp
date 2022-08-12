@@ -232,9 +232,9 @@ public:
   }
 };
 
-template <typename PORT, typename OCR, uint8_t N_CHANNELS, uint8_t N_KEYFRAMES>
+template <typename GPIO, typename TIMER, uint8_t N_CHANNELS, uint8_t N_KEYFRAMES>
 class Controller {
-  using TYPE = typename PORT::TYPE;
+  using TYPE = typename GPIO::TYPE;
   using EVENTS = Events<TYPE, N_CHANNELS + 1>;
 
   TYPE pins_[N_CHANNELS];
@@ -343,11 +343,11 @@ public:
     // Handle the next event in the queue
     if (auto next = isr_iter_.next()) {
       // Update timer and GPIO registers according to event
-      OCR::write(next->delta);
-      PORT::write(next->pins);
+      TIMER::set_delay(next->delta);
+      GPIO::write(next->pins);
     } else {
       // If iterator is empty just clear GPIO pins
-      PORT::clear();
+      GPIO::clear();
     }
   }
 };

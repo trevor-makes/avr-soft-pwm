@@ -11,48 +11,43 @@
 // This tutorial is a good resource to mention
 //https://raw.githubusercontent.com/abcminiuser/avr-tutorials/master/Timers/Output/Timers.pdf
 
-// TODO move Timer/TimerChannel to uIO?
-template <typename TCNT, typename CS, typename WGM, typename TOIE>
-struct Timer {
-  using counter = TCNT;
-  using prescaler = CS;
-  using waveform = WGM;
-  using interrupt = TOIE;
-};
-
-template <typename OCR, typename COM, typename OCIE>
-struct TimerCompare {
-  using value = OCR;
-  using output_mode = COM;
-  using interrupt = OCIE;
-};
-
 using uCLI::StreamEx;
 using uCLI::Args;
 StreamEx serialEx(Serial);
 uCLI::CLI<> serialCli(serialEx);
 
 #ifdef __AVR_ATmega328P__
-// uIO types for Timer2 registers
-uIO_REG(TCCR2A)
-uIO_REG(TCCR2B)
-uIO_REG(TCNT2)
-uIO_REG(TIMSK2)
-uIO_REG(OCR2A)
+struct PWMTimer {
+  // uIO types for Timer2 registers
+  uIO_REG(TCCR2A)
+  uIO_REG(TCCR2B)
+  uIO_REG(TIMSK2)
+  uIO_REG(OCR2A)
 
-// Aliases for Timer2 registers
-using RegCOM2A = uIO::RightAlign<RegTCCR2A::Mask<0xC0>>;
-using RegCS2 = RegTCCR2B::Mask<0x07>;
-using RegWGM2 = uIO::BitExtend<RegTCCR2B::Mask<0x08>, RegTCCR2A::Mask<0x03>>;
-using BitOCIE2A = RegTIMSK2::Bit<OCIE2A>;
-using BitTOIE2 = RegTIMSK2::Bit<TOIE2>;
+  // Aliases for Timer2 bitfields
+  using RegCOM2A = uIO::RightAlign<RegTCCR2A::Mask<0xC0>>;
+  using RegCS2 = RegTCCR2B::Mask<0x07>;
+  using RegWGM2 = uIO::BitExtend<RegTCCR2B::Bit<WGM22>, RegTCCR2A::Mask<0x03>>;
+  using BitOCIE2A = RegTIMSK2::Bit<OCIE2A>;
 
-// Timer2 type wrapper
-constexpr const uint8_t WAVEFORM_CTC = 2;
-constexpr const uint8_t OUTPUT_MODE_OFF = 0;
-constexpr const uint8_t PRESCALE_256 = 6;
-using Timer2 = Timer<RegTCNT2, RegCS2, RegWGM2, BitTOIE2>;
-using Timer2A = TimerCompare<RegOCR2A, RegCOM2A, BitOCIE2A>;
+  // Config timer to interrupt after variable number of cycles
+  // NOTE longest ISR measured was greater than 128 and less than 256 clocks, so use 256 prescaler
+  static void config() {
+    RegWGM2::write(2); // select CTC mode
+    RegCOM2A::write(0); // normal GPIO mode, no hardware PWM on OC2A
+    BitOCIE2A::set(); // enable compare match interrupt
+    RegCS2::write(6); // set prescaler to 256
+  }
+
+  // Interrupt after (delay * prescaler) CPU cycles
+  static void set_delay(uint8_t delay) {
+    RegOCR2A::write(delay);
+  }
+
+  static void disable_isr() {
+    BitOCIE2A::clear();
+  }
+};
 
 // PWM Controller pin mapping
 constexpr const uint8_t PWM_ZONES = 6;
@@ -62,7 +57,7 @@ using PortD = uIO::PortD::Mask<0xFC>;
 using PortC = uIO::PortC::Mask<0x3F>;
 using PortB = uIO::PortB::Mask<0x3F>;
 using PWMPins = uIO::WordExtend<PortD, PortC, PortB>;
-uPWM::Controller<PWMPins, Timer2A::value, PWM_ZONES * PWM_CHANNELS, PWM_KEYFRAMES> pwm;
+uPWM::Controller<PWMPins, PWMTimer, PWM_ZONES * PWM_CHANNELS, PWM_KEYFRAMES> pwm;
 
 // Hook PWM routine into timer 2 compare interrupt
 ISR(TIMER2_COMPA_vect) {
@@ -70,8 +65,17 @@ ISR(TIMER2_COMPA_vect) {
 }
 
 // Timer0 overflow used by Arduino for micros/millis/etc
-uIO_REG(TIMSK0)
-using Timer0_OVF = RegTIMSK0::Bit<TOIE0>;
+struct MicrosTimer {
+  uIO_REG(TIMSK0)
+
+  static void enable_isr() {
+    RegTIMSK0::Bit<TOIE0>::set();
+  }
+
+  static void disable_isr() {
+    RegTIMSK0::Bit<TOIE0>::clear();
+  }
+};
 #else
 #error Need to provide configuration for current platform. See __AVR_ATmega328P__ configuration above.
 #endif
@@ -115,16 +119,7 @@ void setup() {
 
   set_default({});
 
-#ifdef __AVR_ATmega328P__
-  // Configure hardware timer
-  Timer2::waveform::write(WAVEFORM_CTC); // enable CTC mode
-  Timer2A::output_mode::write(OUTPUT_MODE_OFF); // disconnect OC2A output
-  Timer2A::interrupt::set(); // enable compare interrupt
-  // NOTE longest ISR measured was ~150 clocks, so use the next largest prescaler (timer must be slower than ISR)
-  Timer2::prescaler::write(PRESCALE_256); // divide by 256
-#else
-#error TODO make this generic for platforms with different timer configs
-#endif
+  PWMTimer::config();
 
   // Establish serial connection with computer
   Serial.begin(9600);
@@ -161,24 +156,23 @@ void measure_isr(Args args) {
 
   // Disable Rx on pin D0 so we can use it as a digital I/O
   Serial.end();
-  uIO::PinD0::config_output();
+  using MeasurePin = uIO::PinD0;
+  MeasurePin::config_output();
 
   // Multiple ISRs can fire back-to-back and appear as one longer ISR
   // Use these options to isolate one ISR at a time
   if (args.has_next()) {
     auto next = args.next();
     if (strcmp(next, "micros") == 0) {
-      // Disable PWM ISR
-      Timer2A::interrupt::clear();
-      // Enable Arduino micros ISR
-      Timer0_OVF::set();
+      // Only want micros, so disable PWM
+      PWMTimer::disable_isr();
     } else if (strcmp(next, "pwm") == 0) {
-      // Disable Arduino micros ISR
-      Timer0_OVF::clear();
+      // Only want PWM, so disable micros
+      MicrosTimer::disable_isr();
     }
   }
 
-  // Toggle pin D0 (Rx) in an infinite loop to generate a 2 MHz square wave (16 MHz / 8 CPU cycles)
+  // Toggle pin in an infinite loop to generate a 2 MHz square wave (16 MHz / 8 CPU cycles)
   // When an ISR runs it will interrupt the loop and the wave will be stuck high or low like so:
   // -| 8 |- CPU cycles (0.5 us)
   //  |   |   |- ISR length -|     |- ISR length -|
@@ -186,9 +180,9 @@ void measure_isr(Args args) {
   // Measure the pulse width minus 1/2 period (4 CPU cycles, 0.25 us) to compute the ISR duration
   // Reset the board to exit the loop and resume normal function
   for (;;) { // 8 CPU cycles per loop
-    uIO::PinD0::set(); // SBI, 2 cycles
+    MeasurePin::set(); // SBI, 2 cycles
     __asm__ __volatile__ ("nop\n nop\n"); // 2 cycles (1 per NOP)
-    uIO::PinD0::clear(); // CBI, 2 cycles
+    MeasurePin::clear(); // CBI, 2 cycles
   } // RJMP, 2 cycles
 }
 
