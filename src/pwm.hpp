@@ -214,16 +214,11 @@ public:
   void evaluate(uint16_t time, uint16_t period, uint8_t (&values)[N_PER_ZONE]) {
     if (count_ == 0) {
       // Return zero/black if no keyframes
-      // TODO these copy loops are kind of ugly; refactor this?
-      for (uint8_t i = 0; i < N_PER_ZONE; ++i) {
-        values[i] = 0;
-      }
+      memset(values, 0, sizeof(values));
       return;
     } else if (count_ == 1) {
       // Return exact value if only one keyframe
-      for (uint8_t i = 0; i < N_PER_ZONE; ++i) {
-        values[i] = frames_[0].values[i];
-      }
+      memcpy(values, frames_[0].values, sizeof(values));
       return;
     }
 
@@ -233,40 +228,48 @@ public:
       auto const& frame_time = frames_[index].time;
       if (time == frame_time) {
         // Return exact value if timestamps match
-        for (uint8_t i = 0; i < N_PER_ZONE; ++i) {
-          values[i] = frames_[index].values[i];
-        }
+        memcpy(values, frames_[index].values, sizeof(values));
         return;
       } else if (time < frame_time) {
         break;
       }
     }
 
-    // TODO refactor time deltas out of loop
+    // Pre-compute lerp weights from previous to next keyframe
+    // v(t) = (v0 * (t1 - t) + v1 * (t - t0)) / (t1 - t0)
+    uint16_t delta; // t1 - t0
+    uint32_t prev_w; // t1 - t
+    uint32_t next_w; // t - t0
+    uint8_t prev_i, next_i;
+    if (index == 0) {
+      // Previous keyframe [index - 1] wraps-around to [count_ - 1]
+      next_i = index;
+      prev_i = count_ - 1;
+      // time < frames_[index].time < frames_[count_ - 1].time
+      delta = frames_[next_i].time + (period - frames_[prev_i].time);
+      prev_w = frames_[next_i].time - time;
+      next_w = time + (period - frames_[prev_i].time);
+    } else if (index == count_) {
+      // Following keyframe [index] wraps-around to [0]
+      next_i = 0;
+      prev_i = index - 1;
+      // frames_[0].time < frames_[index - 1].time < time
+      delta = frames_[next_i].time + (period - frames_[prev_i].time);
+      prev_w = frames_[next_i].time + (period - time);
+      next_w = time - frames_[prev_i].time;
+    } else {
+      next_i = index;
+      prev_i = index - 1;
+      // frames_[index - 1].time < time < frames_[index].time
+      delta = frames_[next_i].time - frames_[prev_i].time;
+      prev_w = frames_[next_i].time - time;
+      next_w = time - frames_[prev_i].time;
+    }
+
+    // Evaluate lerp over each color channel
     for (uint8_t i = 0; i < N_PER_ZONE; ++i) {
-      // Lerp between previous and next keyframes
-      // v(t) = (v0 * (t1 - t) + v1 * (t - t0)) / (t1 - t0)
-      uint16_t delta; // t1 - t0
-      uint32_t prev; // v0 * (t1 - t)
-      uint32_t next; // v1 * (t - t0)
-      if (index == 0) {
-        // Previous keyframe [index - 1] wraps-around to [count_ - 1]
-        // time < frames_[index].time < frames_[count_ - 1].time
-        delta = frames_[index].time + (period - frames_[count_ - 1].time);
-        prev = uint32_t(frames_[count_ - 1].values[i]) * (frames_[index].time - time);
-        next = uint32_t(frames_[index].values[i]) * (time + (period - frames_[count_ - 1].time));
-      } else if (index == count_) {
-        // Following keyframe [index] wraps-around to [0]
-        // frames_[0].time < frames_[index - 1].time < time
-        delta = frames_[0].time + (period - frames_[index - 1].time);
-        prev = uint32_t(frames_[index - 1].values[i]) * (frames_[0].time + (period - time));
-        next = uint32_t(frames_[0].values[i]) * (time - frames_[index - 1].time);
-      } else {
-        // frames_[index - 1].time < time < frames_[index].time
-        delta = frames_[index].time - frames_[index - 1].time;
-        prev = uint32_t(frames_[index - 1].values[i]) * (frames_[index].time - time);
-        next = uint32_t(frames_[index].values[i]) * (time - frames_[index - 1].time);
-      }
+      uint32_t prev = prev_w * frames_[prev_i].values[i]; // v0 * (t1 - t)
+      uint32_t next = next_w * frames_[next_i].values[i]; // v1 * (t - t0)
       values[i] = (prev + next) / delta;
     }
   }
