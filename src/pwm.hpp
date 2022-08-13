@@ -35,16 +35,40 @@ public:
   }
 };
 
+template <uint8_t I = 0, typename T1, typename T2, uint8_t N>
+void copy_from_args(T1 (&into)[N], const T2 from) {
+  static_assert(I < N, "Too many args");
+  into[I] = from;
+}
+
+template <uint8_t I = 0, typename T1, typename T2, uint8_t N, typename... Args>
+void copy_from_args(T1 (&into)[N], const T2 from, const Args... args) {
+  copy_from_args<I>(into, from);
+  copy_from_args<I + 1>(into, args...);
+}
+
+template <uint8_t I = 0, typename T1, typename T2, uint8_t N>
+void copy_into_args(const T1 (&from)[N], T2& into) {
+  static_assert(I < N, "Too many args");
+  into = from[I];
+}
+
+template <uint8_t I = 0, typename T1, typename T2, uint8_t N, typename... Args>
+void copy_into_args(const T1 (&from)[N], T2& into, Args&... args) {
+  copy_into_args<I>(from, into);
+  copy_into_args<I + 1>(from, args...);
+}
+
 namespace uPWM {
 
-template <typename TYPE, uint8_t SIZE>
+template <typename TYPE, uint8_t N_EVENTS>
 class Events {
   struct Event {
     TYPE pins;
     uint8_t delta;
   };
 
-  Event events_[SIZE];
+  Event events_[N_EVENTS];
   uint8_t count_ = 0;
 
 public:
@@ -138,59 +162,69 @@ public:
   }
 };
 
-template <uint8_t N>
+template <uint8_t N_PER_ZONE, uint8_t N_KEYFRAMES>
 class Keyframes {
   struct Keyframe {
-    uint8_t value;
+    uint8_t values[N_PER_ZONE];
     uint16_t time;
   };
 
-  Keyframe frames_[N];
+  Keyframe frames_[N_KEYFRAMES];
   uint8_t count_ = 0;
 
 public:
   void clear() { count_ = 0; }
 
-  bool get(uint8_t index, uint16_t& time, uint8_t& value) {
+  template <typename... Args>
+  bool get(uint8_t index, uint16_t& time, Args&... args) {
     if (index < count_) {
       time = frames_[index].time;
-      value = frames_[index].value;
+      copy_into_args(frames_[index].values, args...);
       return true;
     } else {
       return false;
     }
   }
 
-  bool insert(uint16_t time, uint8_t value) {
-    if (count_ == N) {
-      return false;
-    }
+  template <typename... Args>
+  bool insert(uint16_t time, const Args... args) {
     // Find insertion index sorted by ascending time
     uint8_t index = 0;
     for (; index < count_; ++index) {
       if (time == frames_[index].time) {
         // Overwrite old keyframe
-        frames_[index].value = value;
+        copy_from_args(frames_[index].values, args...);
         return true;
       } else if (time < frames_[index].time) {
         break;
       }
     }
+    // Can't insert at max capacity
+    if (count_ == N_KEYFRAMES) {
+      return false;
+    }
     // Move later keyframes back to make room and insert
     memmove(&frames_[index+1], &frames_[index], (count_ - index) * sizeof(Keyframe));
     frames_[index].time = time;
-    frames_[index].value = value;
+    copy_from_args(frames_[index].values, args...);
     ++count_;
     return true;
   }
 
-  uint8_t evaluate(uint16_t time, uint16_t period) {
+  void evaluate(uint16_t time, uint16_t period, uint8_t (&values)[N_PER_ZONE]) {
     if (count_ == 0) {
       // Return zero/black if no keyframes
-      return 0;
+      // TODO these copy loops are kind of ugly; refactor this?
+      for (uint8_t i = 0; i < N_PER_ZONE; ++i) {
+        values[i] = 0;
+      }
+      return;
     } else if (count_ == 1) {
       // Return exact value if only one keyframe
-      return frames_[0].value;
+      for (uint8_t i = 0; i < N_PER_ZONE; ++i) {
+        values[i] = frames_[0].values[i];
+      }
+      return;
     }
 
     // Find index of first frame later than given time
@@ -199,46 +233,55 @@ public:
       auto const& frame_time = frames_[index].time;
       if (time == frame_time) {
         // Return exact value if timestamps match
-        return frames_[index].value;
+        for (uint8_t i = 0; i < N_PER_ZONE; ++i) {
+          values[i] = frames_[index].values[i];
+        }
+        return;
       } else if (time < frame_time) {
         break;
       }
     }
 
-    // Lerp between previous and next keyframes
-    // v(t) = (v0 * (t1 - t) + v1 * (t - t0)) / (t1 - t0)
-    uint16_t delta; // t1 - t0
-    uint32_t prev; // v0 * (t1 - t)
-    uint32_t next; // v1 * (t - t0)
-    if (index == 0) {
-      // Previous keyframe [index - 1] wraps-around to [count_ - 1]
-      // time < frames_[index].time < frames_[count_ - 1].time
-      delta = frames_[index].time + (period - frames_[count_ - 1].time);
-      prev = uint32_t(frames_[count_ - 1].value) * (frames_[index].time - time);
-      next = uint32_t(frames_[index].value) * (time + (period - frames_[count_ - 1].time));
-    } else if (index == count_) {
-      // Following keyframe [index] wraps-around to [0]
-      // frames_[0].time < frames_[index - 1].time < time
-      delta = frames_[0].time + (period - frames_[index - 1].time);
-      prev = uint32_t(frames_[index - 1].value) * (frames_[0].time + (period - time));
-      next = uint32_t(frames_[0].value) * (time - frames_[index - 1].time);
-    } else {
-      // frames_[index - 1].time < time < frames_[index].time
-      delta = frames_[index].time - frames_[index - 1].time;
-      prev = uint32_t(frames_[index - 1].value) * (frames_[index].time - time);
-      next = uint32_t(frames_[index].value) * (time - frames_[index - 1].time);
+    // TODO refactor time deltas out of loop
+    for (uint8_t i = 0; i < N_PER_ZONE; ++i) {
+      // Lerp between previous and next keyframes
+      // v(t) = (v0 * (t1 - t) + v1 * (t - t0)) / (t1 - t0)
+      uint16_t delta; // t1 - t0
+      uint32_t prev; // v0 * (t1 - t)
+      uint32_t next; // v1 * (t - t0)
+      if (index == 0) {
+        // Previous keyframe [index - 1] wraps-around to [count_ - 1]
+        // time < frames_[index].time < frames_[count_ - 1].time
+        delta = frames_[index].time + (period - frames_[count_ - 1].time);
+        prev = uint32_t(frames_[count_ - 1].values[i]) * (frames_[index].time - time);
+        next = uint32_t(frames_[index].values[i]) * (time + (period - frames_[count_ - 1].time));
+      } else if (index == count_) {
+        // Following keyframe [index] wraps-around to [0]
+        // frames_[0].time < frames_[index - 1].time < time
+        delta = frames_[0].time + (period - frames_[index - 1].time);
+        prev = uint32_t(frames_[index - 1].values[i]) * (frames_[0].time + (period - time));
+        next = uint32_t(frames_[0].values[i]) * (time - frames_[index - 1].time);
+      } else {
+        // frames_[index - 1].time < time < frames_[index].time
+        delta = frames_[index].time - frames_[index - 1].time;
+        prev = uint32_t(frames_[index - 1].values[i]) * (frames_[index].time - time);
+        next = uint32_t(frames_[index].values[i]) * (time - frames_[index - 1].time);
+      }
+      values[i] = (prev + next) / delta;
     }
-    return (prev + next) / delta;
   }
 };
 
-template <typename GPIO, typename TIMER, uint8_t N_CHANNELS, uint8_t N_KEYFRAMES>
+template <typename GPIO, typename TIMER, uint8_t N_ZONES, uint8_t N_PER_ZONE, uint8_t N_KEYFRAMES>
 class Controller {
+  static constexpr auto N_CHANNELS = N_ZONES * N_PER_ZONE;
+  static constexpr auto N_MAX_EVENTS = N_CHANNELS + 1;
+
   using TYPE = typename GPIO::TYPE;
-  using EVENTS = Events<TYPE, N_CHANNELS + 1>;
+  using EVENTS = Events<TYPE, N_MAX_EVENTS>;
 
   TYPE pins_[N_CHANNELS];
-  Keyframes<N_KEYFRAMES> keyframes_[N_CHANNELS];
+  Keyframes<N_PER_ZONE, N_KEYFRAMES> keyframes_[N_ZONES];
   DoubleBuffer<EVENTS> events_;
   typename EVENTS::iterator isr_iter_;
   uint16_t period_ = 0;
@@ -246,38 +289,26 @@ class Controller {
   volatile bool dirty_ = false;
 
 public:
-  template <uint8_t C = 0, typename T>
-  void config_pins(uint8_t channel, T bit_index) {
-    pins_[channel + C] = TYPE(1) << bit_index;
+  template <uint8_t I = 0, typename T>
+  void config_pins(uint8_t zone, T bit_index) {
+    static_assert(I < N_PER_ZONE, "Too many args");
+    pins_[zone * N_PER_ZONE + I] = TYPE(1) << bit_index;
   }
 
-  template <uint8_t C = 0, typename T, typename... Var>
-  void config_pins(uint8_t channel, T bit_index, const Var... var) {
-    // Index by multiple of parameter count
-    if (C == 0) {
-      channel *= 1 + sizeof...(Var);
-    }
-    config_pins<C>(channel, bit_index);
-    config_pins<C + 1, Var...>(channel, var...);
+  template <uint8_t I = 0, typename T, typename... Args>
+  void config_pins(uint8_t zone, T bit_index, const Args... var) {
+    config_pins<I>(zone, bit_index);
+    config_pins<I + 1, Args...>(zone, var...);
   }
 
-  template <uint8_t C = 0, typename T>
-  void set_keyframe(uint8_t channel, uint16_t time, T value) {
-    keyframes_[channel + C].insert(time % period_, value);
+  template <typename... Args>
+  void set_keyframe(uint8_t zone, uint16_t time, const Args... args) {
+    keyframes_[zone].insert(time % period_, args...);
   }
 
-  template <uint8_t C = 0, typename T, typename... Var>
-  void set_keyframe(uint8_t channel, uint16_t time, T value, const Var... var) {
-    // Index by multiple of parameter count
-    if (C == 0) {
-      channel *= 1 + sizeof...(Var);
-    }
-    set_keyframe<C>(channel, time, value);
-    set_keyframe<C + 1, Var...>(channel, time, var...);
-  } 
-
-  bool get_keyframe(uint8_t channel, uint8_t index, uint16_t& time, uint8_t& value) {
-    return keyframes_[channel].get(index, time, value);
+  template <typename... Args>
+  bool get_keyframe(uint8_t zone, uint8_t index, uint16_t& time, Args&... args) {
+    return keyframes_[zone].get(index, time, args...);
   }
 
   void set_period(uint16_t period) {
@@ -287,11 +318,8 @@ public:
     period_ = period;
   }
 
-  template <uint8_t CHANNELS_PER_ZONE = 1>
   void clear_zone(uint8_t zone) {
-    for (uint8_t i = 0; i < CHANNELS_PER_ZONE; ++i) {
-      keyframes_[zone * CHANNELS_PER_ZONE + i].clear();
-    }
+    keyframes_[zone].clear();
   }
 
   void clear_all() {
@@ -314,8 +342,12 @@ public:
       // Recompile PWM event list with updated values
       auto& events = events_.back();
       events.reset();
-      for (uint8_t i = 0; i < N_CHANNELS; ++i) {
-        events.insert(pins_[i], keyframes_[i].evaluate(counter, period_));
+      for (uint8_t zone = 0; zone < N_ZONES; ++zone) {
+        uint8_t values[N_PER_ZONE];
+        keyframes_[zone].evaluate(counter, period_, values);
+        for (uint8_t i = 0; i < N_PER_ZONE; ++i) {
+          events.insert(pins_[zone * N_PER_ZONE + i], values[i]);
+        }
       }
       events.compile();
       // Swap event buffers when the PWM cycle resets

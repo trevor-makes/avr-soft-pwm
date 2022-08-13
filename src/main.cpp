@@ -50,14 +50,14 @@ struct PWMTimer {
 };
 
 // PWM Controller pin mapping
-constexpr const uint8_t PWM_ZONES = 6;
-constexpr const uint8_t PWM_CHANNELS = 3;
-constexpr const uint8_t PWM_KEYFRAMES = 8;
+constexpr const uint8_t N_ZONES = 6;
+constexpr const uint8_t N_PER_ZONE = 3;
+constexpr const uint8_t N_KEYFRAMES = 8;
 using PortD = uIO::PortD::Mask<0xFC>;
 using PortC = uIO::PortC::Mask<0x3F>;
 using PortB = uIO::PortB::Mask<0x3F>;
 using PWMPins = uIO::WordExtend<PortD, PortC, PortB>;
-uPWM::Controller<PWMPins, PWMTimer, PWM_ZONES * PWM_CHANNELS, PWM_KEYFRAMES> pwm;
+uPWM::Controller<PWMPins, PWMTimer, N_ZONES, N_PER_ZONE, N_KEYFRAMES> pwm;
 
 // Hook PWM routine into timer 2 compare interrupt
 ISR(TIMER2_COMPA_vect) {
@@ -135,16 +135,14 @@ void setup() {
 void do_list(Args);
 void do_clear(Args);
 void config_channel(Args);
-void set_channel(Args);
-void set_zone(Args);
+void set_keyframe(Args);
 void set_period(Args);
 void measure_isr(Args);
 
 void loop() {
   static const uCLI::Command commands[] = {
     { "config", config_channel },
-    { "channel", set_channel },
-    { "zone", set_zone },
+    { "keyframe", set_keyframe },
     { "period", set_period },
     { "clear", do_clear },
     { "default", set_default },
@@ -196,29 +194,34 @@ void measure_isr(Args args) {
 }
 
 void do_list(Args args) {
-  // TODO rework this for keyframes; was originally for static displays
-  // Individual channels can have keyframes at different times, so can't always lump RGB together
-  // Maybe have this spit out commands to generate display for copy/paste export
-  for (uint8_t zone = 0; zone < PWM_ZONES; ++zone) {
-    uint8_t keyframe = 0;
+  // Maybe have this output console commands suitable for copy/paste export
+  for (uint8_t zone = 0; zone < N_ZONES; ++zone) {
     uint16_t time;
     uint8_t red, green, blue;
-    pwm.get_keyframe(zone * PWM_CHANNELS + 0, keyframe, time, red);
-    pwm.get_keyframe(zone * PWM_CHANNELS + 1, keyframe, time, green);
-    pwm.get_keyframe(zone * PWM_CHANNELS + 2, keyframe, time, blue);
-    serialEx.print(zone);
-    serialEx.print(": ");
-    serialEx.print(red);
-    serialEx.print(", ");
-    serialEx.print(green);
-    serialEx.print(", ");
-    serialEx.println(blue);
+    for (uint8_t i = 0; i < N_KEYFRAMES; ++i) {
+      if (!pwm.get_keyframe(zone, i, time, red, green, blue)) {
+        break;
+      }
+      serialEx.print(zone);
+      serialEx.print(" @ ");
+      serialEx.print(time);
+      serialEx.print(": ");
+      serialEx.print(red);
+      serialEx.print(", ");
+      serialEx.print(green);
+      serialEx.print(", ");
+      serialEx.println(blue);
+    }
   }
 }
 
 void do_clear(Args args) {
-  uint8_t zone = atoi(args.next());
-  pwm.clear_zone<PWM_CHANNELS>(zone);
+  if (args.has_next()) {
+    uint8_t zone = atoi(args.next());
+    pwm.clear_zone(zone);
+  } else {
+    pwm.clear_all();
+  }
 }
 
 // Reconfigure pin mapping
@@ -230,15 +233,7 @@ void config_channel(Args args) {
   pwm.config_pins(zone, red, green, blue);
 }
 
-// Reprogram channel
-void set_channel(Args args) {
-  uint8_t channel = atoi(args.next());
-  uint16_t time = atoi(args.next());
-  uint8_t value = atoi(args.next());
-  pwm.set_keyframe(channel, time, value);
-}
-
-void set_zone(Args args) {
+void set_keyframe(Args args) {
   uint8_t zone = atoi(args.next());
   uint16_t time = atoi(args.next());
   uint8_t red = atoi(args.next());
