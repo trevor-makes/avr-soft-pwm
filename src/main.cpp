@@ -2,8 +2,7 @@
 
 #include "uIO.hpp"
 #include "uCLI.hpp"
-
-#include "pwm.hpp"
+#include "uPWM.hpp"
 
 #include <Arduino.h>
 
@@ -48,6 +47,7 @@ struct PWMTimer {
 };
 
 // PWM Controller pin mapping
+// PortD is most significant (byte 2), PortB is least (byte 0)
 using PortD = uIO::PortD::Mask<0xFC>;
 using PortC = uIO::PortC::Mask<0x3F>;
 using PortB = uIO::PortB::Mask<0x3F>;
