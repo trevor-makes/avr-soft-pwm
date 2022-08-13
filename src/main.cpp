@@ -139,11 +139,14 @@ void set_keyframe(Args);
 void set_period(Args);
 void measure_isr(Args);
 
+constexpr const char* KEYFRAME_CMD = "keyframe";
+constexpr const char* PERIOD_CMD = "period";
+
 void loop() {
   static const uCLI::Command commands[] = {
     { "config", config_channel },
-    { "keyframe", set_keyframe },
-    { "period", set_period },
+    { KEYFRAME_CMD, set_keyframe },
+    { PERIOD_CMD, set_period },
     { "clear", do_clear },
     { "default", set_default },
     { "rainbow", set_rainbow },
@@ -193,24 +196,26 @@ void measure_isr(Args args) {
   } // RJMP, 2 cycles
 }
 
+template <typename T>
+void print_list(const T value) {
+  serialEx.println(value);
+}
+
+template <typename T, typename... Args>
+void print_list(const T value, const Args... args) {
+  serialEx.print(value);
+  serialEx.print(' ');
+  print_list(args...);
+}
+
 void do_list(Args args) {
-  // Maybe have this output console commands suitable for copy/paste export
+  print_list(PERIOD_CMD, pwm.get_period());
   for (uint8_t zone = 0; zone < N_ZONES; ++zone) {
+    uint8_t i = 0;
     uint16_t time;
     uint8_t red, green, blue;
-    for (uint8_t i = 0; i < N_KEYFRAMES; ++i) {
-      if (!pwm.get_keyframe(zone, i, time, red, green, blue)) {
-        break;
-      }
-      serialEx.print(zone);
-      serialEx.print(" @ ");
-      serialEx.print(time);
-      serialEx.print(": ");
-      serialEx.print(red);
-      serialEx.print(", ");
-      serialEx.print(green);
-      serialEx.print(", ");
-      serialEx.println(blue);
+    while (pwm.get_keyframe(zone, i++, time, red, green, blue)) {
+      print_list(KEYFRAME_CMD, zone, time, red, green, blue);
     }
   }
 }

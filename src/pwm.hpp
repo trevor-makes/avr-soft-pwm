@@ -321,6 +321,10 @@ public:
     period_ = period;
   }
 
+  uint16_t get_period() {
+    return period_;
+  }
+
   void clear_zone(uint8_t zone) {
     keyframes_[zone].clear();
   }
