@@ -6,14 +6,12 @@
 #include "pwm.hpp"
 
 #include <Arduino.h>
-//#include <avr/interrupt.h>
 
 // This tutorial is a good resource to mention
 //https://raw.githubusercontent.com/abcminiuser/avr-tutorials/master/Timers/Output/Timers.pdf
 
-using uCLI::StreamEx;
 using uCLI::Args;
-StreamEx serialEx(Serial);
+uCLI::StreamEx serialEx(Serial);
 uCLI::CLI<> serialCli(serialEx);
 
 #ifdef __AVR_ATmega328P__
@@ -50,13 +48,14 @@ struct PWMTimer {
 };
 
 // PWM Controller pin mapping
-constexpr const uint8_t N_ZONES = 6;
-constexpr const uint8_t N_PER_ZONE = 3;
-constexpr const uint8_t N_KEYFRAMES = 8;
 using PortD = uIO::PortD::Mask<0xFC>;
 using PortC = uIO::PortC::Mask<0x3F>;
 using PortB = uIO::PortB::Mask<0x3F>;
 using PWMPins = uIO::WordExtend<PortD, PortC, PortB>;
+
+constexpr const uint8_t N_ZONES = 6;
+constexpr const uint8_t N_PER_ZONE = 3;
+constexpr const uint8_t N_KEYFRAMES = 8;
 uPWM::Controller<PWMPins, PWMTimer, N_ZONES, N_PER_ZONE, N_KEYFRAMES> pwm;
 
 // Hook PWM routine into timer 2 compare interrupt
@@ -80,26 +79,8 @@ struct MicrosTimer {
 #error Need to provide configuration for current platform. See __AVR_ATmega328P__ configuration above.
 #endif
 
-void set_default(Args) {
-  pwm.clear_all();
-  constexpr uint8_t TIME = 0;
-  pwm.set_keyframe(0, TIME, 255, 0, 191);
-  pwm.set_keyframe(1, TIME, 191, 0, 63);
-  pwm.set_keyframe(2, TIME, 191, 31, 63);
-  pwm.set_keyframe(3, TIME, 191, 63, 63);
-  pwm.set_keyframe(4, TIME, 255, 63, 15);
-  pwm.set_keyframe(5, TIME, 255, 31, 0);
-}
-
-void set_rainbow(Args) {
-  pwm.clear_all();
-  pwm.set_period(1500);
-  for (uint8_t i = 0; i < 6; ++i) {
-    pwm.set_keyframe(i, 0 + i * 100, 255, 0, 0);
-    pwm.set_keyframe(i, 500 + i * 100, 0, 255, 0);
-    pwm.set_keyframe(i, 1000 + i * 100, 0, 0, 255);
-  }
-}
+void set_default(Args);
+void set_rainbow(Args);
 
 void setup() {
   PWMPins::config_output();
@@ -158,6 +139,84 @@ void loop() {
   serialCli.run_once(commands, []() { pwm.update(); });
 }
 
+void set_default(Args) {
+  pwm.clear_all();
+  constexpr uint8_t TIME = 0;
+  pwm.set_keyframe(0, TIME, 255, 0, 191);
+  pwm.set_keyframe(1, TIME, 191, 0, 63);
+  pwm.set_keyframe(2, TIME, 191, 31, 63);
+  pwm.set_keyframe(3, TIME, 191, 63, 63);
+  pwm.set_keyframe(4, TIME, 255, 63, 15);
+  pwm.set_keyframe(5, TIME, 255, 31, 0);
+}
+
+void set_rainbow(Args) {
+  pwm.clear_all();
+  pwm.set_period(1500);
+  for (uint8_t i = 0; i < 6; ++i) {
+    pwm.set_keyframe(i, 0 + i * 100, 255, 0, 0);
+    pwm.set_keyframe(i, 500 + i * 100, 0, 255, 0);
+    pwm.set_keyframe(i, 1000 + i * 100, 0, 0, 255);
+  }
+}
+
+void do_clear(Args args) {
+  if (args.has_next()) {
+    uint8_t zone = atoi(args.next());
+    pwm.clear_zone(zone);
+  } else {
+    pwm.clear_all();
+  }
+}
+
+void config_channel(Args args) {
+  uint8_t zone = atoi(args.next());
+  uint8_t red = atoi(args.next());
+  uint8_t green = atoi(args.next());
+  uint8_t blue = atoi(args.next());
+  pwm.config_pins(zone, red, green, blue);
+}
+
+void set_keyframe(Args args) {
+  uint8_t zone = atoi(args.next());
+  uint16_t time = atoi(args.next());
+  uint8_t red = atoi(args.next());
+  uint8_t green = atoi(args.next());
+  uint8_t blue = atoi(args.next());
+  pwm.set_keyframe(zone, time, red, green, blue);
+}
+
+void set_period(Args args) {
+  pwm.set_period(atoi(args.next()));
+}
+
+template <typename T>
+void print_list(const T value) {
+  serialEx.println(value);
+}
+
+template <typename T, typename... Args>
+void print_list(const T value, const Args... args) {
+  serialEx.print(value);
+  serialEx.print(' ');
+  print_list(args...);
+}
+
+void do_list(Args args) {
+  print_list(PERIOD_CMD, pwm.get_period());
+
+  for (uint8_t zone = 0; zone < N_ZONES; ++zone) {
+    uint16_t time;
+    uint8_t red, green, blue;
+
+    // Loop over each keyframe
+    uint8_t i = 0;
+    while (pwm.get_keyframe(zone, i++, time, red, green, blue)) {
+      print_list(KEYFRAME_CMD, zone, time, red, green, blue);
+    }
+  }
+}
+
 void measure_isr(Args args) {
   serialEx.println("Connect scope to pin D0 (Rx) and single trigger on pulse width > 1 us to measure ISR");
 
@@ -194,59 +253,4 @@ void measure_isr(Args args) {
     __asm__ __volatile__ ("nop\n nop\n"); // 2 cycles (1 per NOP)
     MeasurePin::clear(); // CBI, 2 cycles
   } // RJMP, 2 cycles
-}
-
-template <typename T>
-void print_list(const T value) {
-  serialEx.println(value);
-}
-
-template <typename T, typename... Args>
-void print_list(const T value, const Args... args) {
-  serialEx.print(value);
-  serialEx.print(' ');
-  print_list(args...);
-}
-
-void do_list(Args args) {
-  print_list(PERIOD_CMD, pwm.get_period());
-  for (uint8_t zone = 0; zone < N_ZONES; ++zone) {
-    uint8_t i = 0;
-    uint16_t time;
-    uint8_t red, green, blue;
-    while (pwm.get_keyframe(zone, i++, time, red, green, blue)) {
-      print_list(KEYFRAME_CMD, zone, time, red, green, blue);
-    }
-  }
-}
-
-void do_clear(Args args) {
-  if (args.has_next()) {
-    uint8_t zone = atoi(args.next());
-    pwm.clear_zone(zone);
-  } else {
-    pwm.clear_all();
-  }
-}
-
-// Reconfigure pin mapping
-void config_channel(Args args) {
-  uint8_t zone = atoi(args.next());
-  uint8_t red = atoi(args.next());
-  uint8_t green = atoi(args.next());
-  uint8_t blue = atoi(args.next());
-  pwm.config_pins(zone, red, green, blue);
-}
-
-void set_keyframe(Args args) {
-  uint8_t zone = atoi(args.next());
-  uint16_t time = atoi(args.next());
-  uint8_t red = atoi(args.next());
-  uint8_t green = atoi(args.next());
-  uint8_t blue = atoi(args.next());
-  pwm.set_keyframe(zone, time, red, green, blue);
-}
-
-void set_period(Args args) {
-  pwm.set_period(atoi(args.next()));
 }

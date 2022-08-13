@@ -61,107 +61,6 @@ void copy_into_args(const T1 (&from)[N], T2& into, Args&... args) {
 
 namespace uPWM {
 
-template <typename TYPE, uint8_t N_EVENTS>
-class Events {
-  struct Event {
-    TYPE pins;
-    uint8_t delta;
-  };
-
-  Event events_[N_EVENTS];
-  uint8_t count_ = 0;
-
-public:
-  void reset() {
-    // Reserve first event for initial pin state
-    events_[0].pins = 0;
-    count_ = 1;
-  }
-
-  class iterator {
-    Events* events_;
-    uint8_t index_ = 0;
-
-  public:
-    iterator(): events_{nullptr} {}
-    iterator(Events& events): events_{&events} {}
-
-    iterator& operator=(iterator const& copy) {
-      events_ = copy.events_;
-      index_ = copy.index_;
-      return *this;
-    }
-
-    bool has_next() {
-      return events_ && index_ < events_->count_;
-    }
-
-    Event* next() {
-      if (has_next()) {
-        return &events_->events_[index_++];
-      } else {
-        return nullptr;
-      }
-    }
-  };
-
-  iterator iter() {
-    return iterator(*this);
-  }
-
-  void insert(TYPE pin, uint8_t value) {
-    // Store the initial state of all pins in event 0
-    if (value > 0) {
-      events_[0].pins |= pin;
-    }
-    // 0% and 100% duty cycle channels never change state, so they don't need events
-    if (value == 0 || value == 255) {
-      return;
-    }
-    // Find index at which to insert, sorted by ascending value
-    uint8_t index = 1;
-    for (; index < count_; ++index) {
-      auto& event = events_[index];
-      if (event.delta == value) {
-        // Event at this time already exists; combine pins and return
-        event.pins |= pin;
-        return;
-      } else if (event.delta > value) {
-        // Found the index to insert at, so break loop early
-        break;
-      }
-    }
-    // Make room for inserted event
-    auto& event = events_[index];
-    memmove(&event + 1, &event, (count_ - index) * sizeof(Event));
-    // Reset inserted event
-    event.pins = pin;
-    event.delta = value;
-    // Update size for inserted event
-    ++count_;
-  }
-
-  // Pre-compute timer delta and accumulate toggled pins
-  void compile() {
-    TYPE output = events_[0].pins;
-    uint8_t elapsed = 0;
-    for (uint8_t index = 1; index < count_; ++index) {
-      auto& event = events_[index];
-      auto& prev = events_[index - 1];
-      // Clear output pins toggled by event
-      output &= ~event.pins;
-      event.pins = output;
-      // Compute timer delta between events
-      // NOTE subtract 1 because the timer will delay at least 1 cycle
-      prev.delta = event.delta - elapsed - 1;
-      elapsed = event.delta;
-    }
-    // Set final delta for 255 cycles from first event
-    // NOTE setting timer to 254 delays for 255 cycles
-    events_[count_ - 1].delta = 254 - elapsed;
-  }
-};
-
 template <uint8_t N_PER_ZONE, uint8_t N_KEYFRAMES>
 class Keyframes {
   struct Keyframe {
@@ -272,6 +171,107 @@ public:
       uint32_t next = next_w * frames_[next_i].values[i]; // v1 * (t - t0)
       values[i] = (prev + next) / delta;
     }
+  }
+};
+
+template <typename TYPE, uint8_t N_EVENTS>
+class Events {
+  struct Event {
+    TYPE pins;
+    uint8_t delta;
+  };
+
+  Event events_[N_EVENTS];
+  uint8_t count_ = 0;
+
+public:
+  void reset() {
+    // Reserve first event for initial pin state
+    events_[0].pins = 0;
+    count_ = 1;
+  }
+
+  void insert(TYPE pin, uint8_t value) {
+    // Store the initial state of all pins in event 0
+    if (value > 0) {
+      events_[0].pins |= pin;
+    }
+    // 0% and 100% duty cycle channels never change state, so they don't need events
+    if (value == 0 || value == 255) {
+      return;
+    }
+    // Find index at which to insert, sorted by ascending value
+    uint8_t index = 1;
+    for (; index < count_; ++index) {
+      auto& event = events_[index];
+      if (event.delta == value) {
+        // Event at this time already exists; combine pins and return
+        event.pins |= pin;
+        return;
+      } else if (event.delta > value) {
+        // Found the index to insert at, so break loop early
+        break;
+      }
+    }
+    // Make room for inserted event
+    auto& event = events_[index];
+    memmove(&event + 1, &event, (count_ - index) * sizeof(Event));
+    // Reset inserted event
+    event.pins = pin;
+    event.delta = value;
+    // Update size for inserted event
+    ++count_;
+  }
+
+  // Pre-compute timer delta and accumulate toggled pins
+  void compile() {
+    TYPE output = events_[0].pins;
+    uint8_t elapsed = 0;
+    for (uint8_t index = 1; index < count_; ++index) {
+      auto& event = events_[index];
+      auto& prev = events_[index - 1];
+      // Clear output pins toggled by event
+      output &= ~event.pins;
+      event.pins = output;
+      // Compute timer delta between events
+      // NOTE subtract 1 because the timer will delay at least 1 cycle
+      prev.delta = event.delta - elapsed - 1;
+      elapsed = event.delta;
+    }
+    // Set final delta for 255 cycles from first event
+    // NOTE setting timer to 254 delays for 255 cycles
+    events_[count_ - 1].delta = 254 - elapsed;
+  }
+
+  class iterator {
+    Events* events_;
+    uint8_t index_ = 0;
+
+  public:
+    iterator(): events_{nullptr} {}
+    iterator(Events& events): events_{&events} {}
+
+    iterator& operator=(iterator const& copy) {
+      events_ = copy.events_;
+      index_ = copy.index_;
+      return *this;
+    }
+
+    bool has_next() {
+      return events_ && index_ < events_->count_;
+    }
+
+    Event* next() {
+      if (has_next()) {
+        return &events_->events_[index_++];
+      } else {
+        return nullptr;
+      }
+    }
+  };
+
+  iterator iter() {
+    return iterator(*this);
   }
 };
 
