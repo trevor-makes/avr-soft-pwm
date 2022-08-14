@@ -6,9 +6,6 @@
 
 #include <Arduino.h>
 
-// This tutorial is a good resource to mention
-//https://raw.githubusercontent.com/abcminiuser/avr-tutorials/master/Timers/Output/Timers.pdf
-
 using uCLI::Args;
 uCLI::StreamEx serialEx(Serial);
 uCLI::CLI<> serialCli(serialEx);
@@ -48,6 +45,7 @@ struct PWMTimer {
 
 // PWM Controller pin mapping
 // PortD is most significant (byte 2), PortB is least (byte 0)
+// [x x x x x x x x | D7 D6 D5 D4 D3 D2 x x | x x C5 C4 C3 C2 C1 C0 | x x B5 B4 B3 B2 B1 B0]
 using PortD = uIO::PortD::Mask<0xFC>;
 using PortC = uIO::PortC::Mask<0x3F>;
 using PortB = uIO::PortB::Mask<0x3F>;
