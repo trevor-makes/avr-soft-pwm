@@ -150,11 +150,13 @@ void set_default(Args) {
 
 void set_rainbow(Args) {
   pwm.clear_all();
-  pwm.set_period(1500);
+  pwm.set_period(1500); // Loop every 6 seconds
   for (uint8_t i = 0; i < 6; ++i) {
-    pwm.set_keyframe(i, 0 + i * 100, 255, 0, 0);
-    pwm.set_keyframe(i, 500 + i * 100, 0, 255, 0);
-    pwm.set_keyframe(i, 1000 + i * 100, 0, 0, 255);
+    // Cycle from red to green to blue with 500 ticks (2 seconds) between each
+    // Offset each zone by 100 ticks (0.4 seconds)
+    pwm.set_keyframe(i, 0 + i * 100, 255, 0, 0); // Red
+    pwm.set_keyframe(i, 500 + i * 100, 0, 255, 0); // Green
+    pwm.set_keyframe(i, 1000 + i * 100, 0, 0, 255); // Blue
   }
 }
 

@@ -81,7 +81,7 @@ Define a static interface for the timer providing interrupts. Consult the AVR [d
 struct PWMTimer {
 ...
   static void set_delay(uint8_t delay) {
-    // 
+    // Program the timer to interrupt after `delay` ticks
   }
 ...
 };
@@ -93,6 +93,8 @@ ISR(TIMER2_COMPA_vect) {
   pwm.isr();
 }
 ```
+
+(TODO circuit diagram again?)
 
 In the `setup` function, define the mapping from zone/color to the pinout of the GPIO port:
 ```
@@ -109,18 +111,20 @@ pwm.config_pins(4, B + 1, B + 2, B + 0); // r4, g4, b4
 pwm.config_pins(5, D + 3, D + 4, D + 2); // r5, g5, b5
 ```
 
-Use `set_period` and `set_keyframe` to initialize the keyframe animation:
+Use `clear_all`, `set_period`, and `set_keyframe` to initialize the keyframe animation:
 ```
 pwm.clear_all();
-pwm.set_period(1500);
+pwm.set_period(1500); // Loop every 6 seconds
 for (uint8_t i = 0; i < 6; ++i) {
-  pwm.set_keyframe(i, 0 + i * 100, 255, 0, 0);
-  pwm.set_keyframe(i, 500 + i * 100, 0, 255, 0);
-  pwm.set_keyframe(i, 1000 + i * 100, 0, 0, 255);
+  // Cycle from red to green to blue with 500 ticks (2 seconds) between each
+  // Offset each zone by 100 ticks (0.4 seconds)
+  pwm.set_keyframe(i, 0 + i * 100, 255, 0, 0); // Red
+  pwm.set_keyframe(i, 500 + i * 100, 0, 255, 0); // Green
+  pwm.set_keyframe(i, 1000 + i * 100, 0, 0, 255); // Blue
 }
 ```
 
-A static display will present with a single call to `update` in `setup`. For multi-keyframe animations, `update` should be called before/after other code in `loop`:
+A static display will present after a single call to `update`. For multi-keyframe animations, `update` should be called before/after other code in `loop`:
 ```
 void loop() {
   ...
