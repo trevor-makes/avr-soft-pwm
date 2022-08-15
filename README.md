@@ -24,7 +24,7 @@ Open the project folder with VSCode, select the environment for your board (`uno
 
 ## Using the example program
 
-(TODO circuit diagram)
+![](images/schematic.png)
 
 After building and uploading the program to the Arduino, connect a serial monitor such as the one included with PlatformIO. A '>' should appear as a prompt for input. The following commands are available:
 
@@ -96,7 +96,7 @@ ISR(TIMER2_COMPA_vect) {
 }
 ```
 
-(TODO circuit diagram again?)
+![](images/schematic.png)
 
 In the `setup` function, define the mapping from zone/color to the pinout of the GPIO port:
 ```
