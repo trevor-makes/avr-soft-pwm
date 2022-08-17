@@ -4,8 +4,6 @@
 - Use every GPIO pin for interrupt-driven 8-bit PWM
 - Keyframe animation using linear interpolation
 
-(TODO lighting picture)
-
 The built-in hardware PWM ([pulse-width modulation](https://en.wikipedia.org/wiki/Pulse-width_modulation)) feature of AVR microcontrollers allows certain GPIO pins to be pulsed by a hardware timer, approximating an analog signal proportional to how long a pin is held high or low (duty cycle). The duty cycle is first set by software (the `analogWrite` function from the Arduino API), then the timer will continue to pulse the pin independent of CPU activity.
 
 ![](images/freq_and_duty.png)
@@ -50,7 +48,17 @@ Clear all keyframes from the given `zone`, or clear all zones if none given.
 ```
 >list
 ```
-Prints `period` and `keyframe` commands currently in use. These can be copy-pasted and re-sent to recreate the current display.
+Prints `period` and `keyframe` commands currently in use. These can be copy-pasted and re-sent to recreate the current animation.
+
+```
+>save (index)
+```
+Saves the current animation to EEPROM at `index` (0 if omitted). Prints an error if the index is out of bounds. At startup, the animation at index 0 (if it exists) will be loaded automatically. With the default `uPWM::Controller` configuration, indices 0 through 3 can be used.
+
+```
+>load (index)
+```
+Loads a saved animation from EEPROM at `index` (0 if omitted). Prints an error if the index is out of bounds or if the data in EEPROM is invalid.
 
 ```
 >measure (pwm|micros|both)
