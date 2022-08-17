@@ -5,10 +5,35 @@
 #include "uPWM.hpp"
 
 #include <Arduino.h>
+#include <EEPROM.h>
 
 using uCLI::Args;
 uCLI::StreamEx serialEx(Serial);
 uCLI::CLI<> serialCli(serialEx);
+
+struct Serializer {
+  static void save_byte(uint16_t address, uint8_t data) {
+    EEPROM.update(address, data);
+  }
+
+  template <typename T>
+  static void save(uint16_t address, const T& data) {
+    EEPROM.put(address, data);
+  }
+
+  static uint8_t load_byte(uint16_t address) {
+    return EEPROM.read(address);
+  }
+
+  template <typename T>
+  static void load(uint16_t address, T& data) {
+    EEPROM.get(address, data);
+  }
+
+  static uint16_t get_size() {
+    return EEPROM.length();
+  }
+};
 
 #ifdef __AVR_ATmega328P__
 struct PWMTimer {
@@ -96,7 +121,10 @@ void setup() {
   pwm.config_pins(4, B + 1, B + 2, B + 0); // r4, g4, b4
   pwm.config_pins(5, D + 3, D + 4, D + 2); // r5, g5, b5
 
-  set_default({});
+  // Load from EEPROM if valid, otherwise use default
+  if (!pwm.load<Serializer>(0)) {
+    set_default({});
+  }
 
   PWMTimer::config();
 
@@ -112,6 +140,8 @@ void setup() {
 }
 
 void do_list(Args);
+void do_save(Args);
+void do_load(Args);
 void do_clear(Args);
 void config_channel(Args);
 void set_keyframe(Args);
@@ -130,6 +160,8 @@ void loop() {
     { "default", set_default },
     { "rainbow", set_rainbow },
     { "list", do_list },
+    { "save", do_save },
+    { "load", do_load },
     { "measure", measure_isr },
   };
 
@@ -214,6 +246,20 @@ void do_list(Args args) {
     while (pwm.get_keyframe(zone, i++, time, red, green, blue)) {
       print_list(KEYFRAME_CMD, zone, time, red, green, blue);
     }
+  }
+}
+
+void do_save(Args args) {
+  uint8_t index = atoi(args.next());
+  if (!pwm.save<Serializer>(index)) {
+    serialEx.println("Unable to save");
+  }
+}
+
+void do_load(Args args) {
+  uint8_t index = atoi(args.next());
+  if (!pwm.load<Serializer>(index)) {
+    serialEx.println("Unable to load");
   }
 }
 

@@ -314,6 +314,35 @@ public:
     return keyframes_[zone].get(index, time, args...);
   }
 
+  constexpr static uint8_t PWM_VERSION = '1';
+  constexpr static uint16_t SAVE_SIZE = 6 + sizeof(keyframes_);
+
+  template <typename STORE>
+  bool save(uint8_t index) {
+    if ((index + 1) * SAVE_SIZE > STORE::get_size()) return false;
+    uint16_t base = index * SAVE_SIZE;
+    STORE::save_byte(base, PWM_VERSION);
+    STORE::save_byte(base + 1, N_ZONES);
+    STORE::save_byte(base + 2, N_PER_ZONE);
+    STORE::save_byte(base + 3, N_KEYFRAMES);
+    STORE::save(base + 4, period_);
+    STORE::save(base + 6, keyframes_);
+    return true;
+  }
+
+  template <typename STORE>
+  bool load(uint8_t index) {
+    if ((index + 1) * SAVE_SIZE > STORE::get_size()) return false;
+    uint16_t base = index * SAVE_SIZE;
+    if (STORE::load_byte(base) != PWM_VERSION) return false;
+    if (STORE::load_byte(base + 1) != N_ZONES) return false;
+    if (STORE::load_byte(base + 2) != N_PER_ZONE) return false;
+    if (STORE::load_byte(base + 3) != N_KEYFRAMES) return false;
+    STORE::load(base + 4, period_);
+    STORE::load(base + 6, keyframes_);
+    return true;
+  }
+
   void set_period(uint16_t period) {
     // Prevent ISR from reading counter/period while we write them
     auto guard = ISRGuard();
