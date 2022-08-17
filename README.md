@@ -16,15 +16,19 @@ By careful use of timer interrupts and low-level GPIO control, we can instead us
 
 Distributed under the [MIT license](LICENSE.txt)
 
-## Building
+## Building the example program
 
 Use the [PlatformIO](https://platformio.org/) plugin for [VSCode](https://code.visualstudio.com/).
 
 Open the project folder with VSCode, select the environment for your board (`uno`, `nano`, `oldnano`), and click `Upload`.
 
-## Using the example program
+## Assembling the example circuit
 
 ![](images/schematic.png)
+
+![](images/breadboard.jpg)
+
+## Using the example program
 
 After building and uploading the program to the Arduino, connect a serial monitor such as the one included with PlatformIO. A '>' should appear as a prompt for input. The following commands are available:
 
@@ -95,8 +99,6 @@ ISR(TIMER2_COMPA_vect) {
   pwm.isr();
 }
 ```
-
-![](images/schematic.png)
 
 In the `setup` function, define the mapping from zone/color to the pinout of the GPIO port:
 ```
