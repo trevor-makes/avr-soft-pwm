@@ -20,6 +20,8 @@ Use the [PlatformIO](https://platformio.org/) plugin for [VSCode](https://code.v
 
 Open the project folder with VSCode, select the environment for your board (`uno`, `nano`, `oldnano`), and click `Upload`.
 
+![](images/platformio.png)
+
 ## Assembling the example circuit
 
 ![](images/schematic.png)
@@ -34,6 +36,11 @@ After building and uploading the program to the Arduino, connect a serial monito
 >keyframe zone time red green blue
 ```
 Add an RGB keyframe to `zone` at the specified `time` (250 ticks = 1 second). A single keyframe will display a fixed color, while multiple keyframes will interpolate over time to display a gradient.
+
+```
+>keyframe 0 500 255 127 63
+```
+Sets the first zone (0) to 100% (255) red, 50% (127) green, 25% (63) blue at 2 seconds (500 ticks) from the start of the loop.
 
 ```
 >period time
@@ -80,16 +87,6 @@ using PortB = uIO::PortB::Mask<0x3F>; // B0 through B5 (6 and 7 used for clock c
 using PWMPins = uIO::WordExtend<PortD, PortC, PortB>;
 ```
 
-Create an instance of `uPWM::Controller`. Here we configure it for 6 strips of RGB lights with up to 8 keyframes each:
-```
-#inclue "uPWM.hpp"
-
-constexpr const uint8_t N_ZONES = 6; // 6 independent strips
-constexpr const uint8_t N_PER_ZONE = 3; // [red, green, blue] per zone
-constexpr const uint8_t N_KEYFRAMES = 8; // maximum keyframes per zone
-uPWM::Controller<PWMPins, PWMTimer, N_ZONES, N_PER_ZONE, N_KEYFRAMES> pwm;
-```
-
 Define a static interface for the timer providing interrupts. Consult the AVR [datasheet](https://ww1.microchip.com/downloads/en/DeviceDoc/Atmel-7810-Automotive-Microcontrollers-ATmega328P_Datasheet.pdf) or a tutorial like [this](https://raw.githubusercontent.com/abcminiuser/avr-tutorials/master/Timers/Output/Timers.pdf) for instructions on AVR timers. The example program uses "Clear Timer on Compare Match" (CTC) mode on Timer 2. Whichever timer is used, Controller just requires a `set_delay` method to request an interrupt after `delay` ticks:
 ```
 struct PWMTimer {
@@ -99,6 +96,16 @@ struct PWMTimer {
   }
 ...
 };
+```
+
+Create an instance of `uPWM::Controller`. Here we configure it for 6 strips of RGB lights with up to 8 keyframes each:
+```
+#inclue "uPWM.hpp"
+
+constexpr const uint8_t N_ZONES = 6; // 6 independent strips
+constexpr const uint8_t N_PER_ZONE = 3; // [red, green, blue] per zone
+constexpr const uint8_t N_KEYFRAMES = 8; // maximum keyframes per zone
+uPWM::Controller<PWMPins, PWMTimer, N_ZONES, N_PER_ZONE, N_KEYFRAMES> pwm;
 ```
 
 Hook the Controller's ISR into the relevant timer interrupt:
