@@ -268,7 +268,7 @@ void measure_isr(Args args) {
 
   // Disable Rx on pin D0 so we can use it as a digital I/O
   Serial.end();
-  using MeasurePin = uIO::PinD0;
+  using MeasurePin = uIO::PortD::Bit<0>;
   MeasurePin::config_output();
 
   // Multiple ISRs can fire back-to-back and appear as one longer ISR
