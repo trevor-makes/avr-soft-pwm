@@ -68,13 +68,17 @@ struct PWMTimer {
   }
 };
 
+uIO_PORT(B)
+uIO_PORT(C)
+uIO_PORT(D)
+
+// Use Rx pin for ISR measurement pulse (Serial must be disabled)
+using MeasurePin = PortD::Bit<0>;
+
 // PWM Controller pin mapping
 // PortD is most significant (byte 2), PortB is least (byte 0)
 // [x x x x x x x x | D7 D6 D5 D4 D3 D2 x x | x x C5 C4 C3 C2 C1 C0 | x x B5 B4 B3 B2 B1 B0]
-using PortD = uIO::PortD::Mask<0xFC>;
-using PortC = uIO::PortC::Mask<0x3F>;
-using PortB = uIO::PortB::Mask<0x3F>;
-using PWMPins = uIO::WordExtend<PortD, PortC, PortB>;
+using PWMPins = uIO::WordExtend<PortD::Mask<0xFC>, PortC::Mask<0x3F>, PortB::Mask<0x3F>>;
 
 constexpr const uint8_t N_ZONES = 6;
 constexpr const uint8_t N_PER_ZONE = 3;
@@ -268,7 +272,6 @@ void measure_isr(Args args) {
 
   // Disable Rx on pin D0 so we can use it as a digital I/O
   Serial.end();
-  using MeasurePin = uIO::PortD::Bit<0>;
   MeasurePin::config_output();
 
   // Multiple ISRs can fire back-to-back and appear as one longer ISR
