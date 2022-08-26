@@ -2,7 +2,7 @@
 
 #include "core/io.hpp"
 #include "core/cli.hpp"
-#include "uPWM.hpp"
+#include "core/pwm.hpp"
 
 #include <Arduino.h>
 #include <EEPROM.h>
@@ -83,7 +83,7 @@ using PWMPins = core::WordExtend<PortD::Mask<0xFC>, PortC::Mask<0x3F>, PortB::Ma
 constexpr const uint8_t N_ZONES = 6;
 constexpr const uint8_t N_PER_ZONE = 3;
 constexpr const uint8_t N_KEYFRAMES = 8;
-uPWM::Controller<PWMPins, PWMTimer, N_ZONES, N_PER_ZONE, N_KEYFRAMES> pwm;
+core::pwm::Controller<PWMPins, PWMTimer, N_ZONES, N_PER_ZONE, N_KEYFRAMES> pwm;
 
 // Hook PWM routine into timer 2 compare interrupt
 ISR(TIMER2_COMPA_vect) {
