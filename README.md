@@ -74,17 +74,30 @@ Freezes the animation and command input while generating a square wave on the `R
 
 ![](images/measure_isr.png)
 
-## Using the uPWM library
+## Using PWM in another project
 
-Create an alias for the desired GPIO pins using [uIO](https://github.com/trevor-makes/uIO). This enables fast parallel I/O with AVR's OUT instruction, up to hundreds of times faster than Arduino `digitalWrite` calls. Here we extend ports B, C, and D into a single 24-bit virtual port:
+Software PWM, low-level GPIO, and CLI features are provided by the [core](https://github.com/trevor-makes/core) library. To add `core` to a PlatformIO project, modify the `platformio.ini` configuration file as follows:
+
 ```
-#include "uIO.hpp"
+lib_deps =
+    ...other dependencies...
+    https://github.com/trevor-makes/core.git
+```
 
-using PortD = uIO::PortD::Mask<0xFC>; // D2 through D7 (0 and 1 used for serial Rx/Tx)
-using PortC = uIO::PortC::Mask<0x3F>; // C0 through C5 (6 used for RESET, 7 doesn't exist)
-using PortB = uIO::PortB::Mask<0x3F>; // B0 through B5 (6 and 7 used for clock crystal)
+Create an alias for the desired GPIO pins using `core/io`. This enables fast parallel I/O with AVR's OUT instruction, up to hundreds of times faster than Arduino `digitalWrite` calls. Here we extend ports B, C, and D into a single 24-bit virtual port:
+```
+#include "core/io.hpp"
+
+// Create Port wrappers for PORTx, DDRx, PINx registers
+CORE_PORT(B)
+CORE_PORT(C)
+CORE_PORT(D)
+
+// D2 through D7 (0 and 1 used for serial Rx/Tx)
+// C0 through C5 (6 used for RESET, 7 doesn't exist)
+// B0 through B5 (6 and 7 used for clock crystal)
 // [x x x x x x x x | D7 D6 D5 D4 D3 D2 x x | x x C5 C4 C3 C2 C1 C0 | x x B5 B4 B3 B2 B1 B0]
-using PWMPins = uIO::WordExtend<PortD, PortC, PortB>;
+using PWMPins = core::WordExtend<PortD::Mask<0xFC>, PortC::Mask<0x3F>, PortB::Mask<0x3F>>;
 ```
 
 Define a static interface for the timer providing interrupts. Consult the AVR [datasheet](https://ww1.microchip.com/downloads/en/DeviceDoc/Atmel-7810-Automotive-Microcontrollers-ATmega328P_Datasheet.pdf) or a tutorial like [this](https://raw.githubusercontent.com/abcminiuser/avr-tutorials/master/Timers/Output/Timers.pdf) for instructions on AVR timers. The example program uses "Clear Timer on Compare Match" (CTC) mode on Timer 2. Whichever timer is used, Controller just requires a `set_delay` method to request an interrupt after `delay` ticks:
@@ -98,14 +111,14 @@ struct PWMTimer {
 };
 ```
 
-Create an instance of `uPWM::Controller`. Here we configure it for 6 strips of RGB lights with up to 8 keyframes each:
+Create an instance of `core::pwm::Controller`. Here we configure it for 6 strips of RGB lights with up to 8 keyframes each:
 ```
-#inclue "uPWM.hpp"
+#inclue "core/pwm.hpp"
 
 constexpr const uint8_t N_ZONES = 6; // 6 independent strips
 constexpr const uint8_t N_PER_ZONE = 3; // [red, green, blue] per zone
 constexpr const uint8_t N_KEYFRAMES = 8; // maximum keyframes per zone
-uPWM::Controller<PWMPins, PWMTimer, N_ZONES, N_PER_ZONE, N_KEYFRAMES> pwm;
+core::pwm::Controller<PWMPins, PWMTimer, N_ZONES, N_PER_ZONE, N_KEYFRAMES> pwm;
 ```
 
 Hook the Controller's ISR into the relevant timer interrupt:
@@ -156,9 +169,7 @@ void loop() {
 
 The following dependencies will be downloaded by PlatformIO at build time:
 
-- [uIO](https://github.com/trevor-makes/uIO)
-- [uCLI](https://github.com/trevor-makes/uCLI)
-- [uANSI](https://github.com/trevor-makes/uANSI)
+- [core](https://github.com/trevor-makes/core)
 
 ## Contributors
 
