@@ -1,15 +1,15 @@
 // Copyright (c) 2022 Trevor Makes
 
-#include "uIO.hpp"
-#include "uCLI.hpp"
+#include "core/io.hpp"
+#include "core/cli.hpp"
 #include "uPWM.hpp"
 
 #include <Arduino.h>
 #include <EEPROM.h>
 
-using uCLI::Args;
-uCLI::StreamEx serialEx(Serial);
-uCLI::CLI<> serialCli(serialEx);
+using core::Args;
+core::StreamEx serialEx(Serial);
+core::CLI<> serialCli(serialEx);
 
 struct Serializer {
   static void save_byte(uint16_t address, uint8_t data) {
@@ -38,15 +38,15 @@ struct Serializer {
 #ifdef __AVR_ATmega328P__
 struct PWMTimer {
   // uIO types for Timer2 registers
-  uIO_REG(TCCR2A)
-  uIO_REG(TCCR2B)
-  uIO_REG(TIMSK2)
-  uIO_REG(OCR2A)
+  CORE_REG(TCCR2A)
+  CORE_REG(TCCR2B)
+  CORE_REG(TIMSK2)
+  CORE_REG(OCR2A)
 
   // Aliases for Timer2 bitfields
-  using RegCOM2A = uIO::RightAlign<RegTCCR2A::Mask<0xC0>>;
+  using RegCOM2A = core::RightAlign<RegTCCR2A::Mask<0xC0>>;
   using RegCS2 = RegTCCR2B::Mask<0x07>;
-  using RegWGM2 = uIO::BitExtend<RegTCCR2B::Bit<WGM22>, RegTCCR2A::Mask<0x03>>;
+  using RegWGM2 = core::BitExtend<RegTCCR2B::Bit<WGM22>, RegTCCR2A::Mask<0x03>>;
   using BitOCIE2A = RegTIMSK2::Bit<OCIE2A>;
 
   // Config timer to interrupt after variable number of cycles
@@ -68,9 +68,9 @@ struct PWMTimer {
   }
 };
 
-uIO_PORT(B)
-uIO_PORT(C)
-uIO_PORT(D)
+CORE_PORT(B)
+CORE_PORT(C)
+CORE_PORT(D)
 
 // Use Rx pin for ISR measurement pulse (Serial must be disabled)
 using MeasurePin = PortD::Bit<0>;
@@ -78,7 +78,7 @@ using MeasurePin = PortD::Bit<0>;
 // PWM Controller pin mapping
 // PortD is most significant (byte 2), PortB is least (byte 0)
 // [x x x x x x x x | D7 D6 D5 D4 D3 D2 x x | x x C5 C4 C3 C2 C1 C0 | x x B5 B4 B3 B2 B1 B0]
-using PWMPins = uIO::WordExtend<PortD::Mask<0xFC>, PortC::Mask<0x3F>, PortB::Mask<0x3F>>;
+using PWMPins = core::WordExtend<PortD::Mask<0xFC>, PortC::Mask<0x3F>, PortB::Mask<0x3F>>;
 
 constexpr const uint8_t N_ZONES = 6;
 constexpr const uint8_t N_PER_ZONE = 3;
@@ -92,7 +92,7 @@ ISR(TIMER2_COMPA_vect) {
 
 // Timer0 overflow used by Arduino for micros/millis/etc
 struct MicrosTimer {
-  uIO_REG(TIMSK0)
+  CORE_REG(TIMSK0)
 
   static void enable_isr() {
     RegTIMSK0::Bit<TOIE0>::set();
@@ -156,7 +156,7 @@ constexpr const char* KEYFRAME_CMD = "keyframe";
 constexpr const char* PERIOD_CMD = "period";
 
 void loop() {
-  static const uCLI::Command commands[] = {
+  static const core::Command commands[] = {
     { "config", config_channel },
     { KEYFRAME_CMD, set_keyframe },
     { PERIOD_CMD, set_period },
