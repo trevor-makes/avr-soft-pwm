@@ -7,9 +7,9 @@
 #include <Arduino.h>
 #include <EEPROM.h>
 
-using core::Args;
-core::StreamEx serialEx(Serial);
-core::CLI<> serialCli(serialEx);
+using core::cli::Args;
+core::serial::StreamEx serialEx(Serial);
+core::cli::CLI<> serialCli(serialEx);
 
 struct Serializer {
   static void save_byte(uint16_t address, uint8_t data) {
@@ -44,9 +44,9 @@ struct PWMTimer {
   CORE_REG(OCR2A)
 
   // Aliases for Timer2 bitfields
-  using RegCOM2A = core::RightAlign<RegTCCR2A::Mask<0xC0>>;
+  using RegCOM2A = core::io::RightAlign<RegTCCR2A::Mask<0xC0>>;
   using RegCS2 = RegTCCR2B::Mask<0x07>;
-  using RegWGM2 = core::BitExtend<RegTCCR2B::Bit<WGM22>, RegTCCR2A::Mask<0x03>>;
+  using RegWGM2 = core::io::BitExtend<RegTCCR2B::Bit<WGM22>, RegTCCR2A::Mask<0x03>>;
   using BitOCIE2A = RegTIMSK2::Bit<OCIE2A>;
 
   // Config timer to interrupt after variable number of cycles
@@ -78,7 +78,7 @@ using MeasurePin = PortD::Bit<0>;
 // PWM Controller pin mapping
 // PortD is most significant (byte 2), PortB is least (byte 0)
 // [x x x x x x x x | D7 D6 D5 D4 D3 D2 x x | x x C5 C4 C3 C2 C1 C0 | x x B5 B4 B3 B2 B1 B0]
-using PWMPins = core::WordExtend<PortD::Mask<0xFC>, PortC::Mask<0x3F>, PortB::Mask<0x3F>>;
+using PWMPins = core::io::WordExtend<PortD::Mask<0xFC>, PortC::Mask<0x3F>, PortB::Mask<0x3F>>;
 
 constexpr const uint8_t N_ZONES = 6;
 constexpr const uint8_t N_PER_ZONE = 3;
@@ -156,7 +156,7 @@ constexpr const char* KEYFRAME_CMD = "keyframe";
 constexpr const char* PERIOD_CMD = "period";
 
 void loop() {
-  static const core::Command commands[] = {
+  static const core::cli::Command commands[] = {
     { "config", config_channel },
     { KEYFRAME_CMD, set_keyframe },
     { PERIOD_CMD, set_period },
