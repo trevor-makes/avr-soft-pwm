@@ -85,6 +85,30 @@ constexpr const uint8_t N_PER_ZONE = 3;
 constexpr const uint8_t N_KEYFRAMES = 8;
 core::pwm::Controller<PWMPins, PWMTimer, N_ZONES, N_PER_ZONE, N_KEYFRAMES> pwm;
 
+void config_pins() {
+  PWMPins::config_output();
+
+  // Configure mapping from zone/channel to bit within port register
+  //  Blue 5 - D2 |         | x
+  //   Red 5 - D3 |         | x
+  // Green 5 - D4 |         | C5 - Green 0
+  //  Blue 2 - D5 |         | C4 -   Red 0
+  //   Red 2 - D6 | Arduino | C3 -  Blue 0
+  // Green 2 - D7 |   NANO  | C2 - Green 1
+  //  Blue 4 - B0 |         | C1 -   Red 1
+  //   Red 4 - B1 |         | C0 -  Blue 1
+  // Green 4 - B2 |   ___   | x
+  //  Blue 3 - B3 |  |USB|  | x
+  //   Red 3 - B4 |__|___|__| B5 - Green 3
+  constexpr auto B = 0, C = 8, D = 16;
+  pwm.config_pins(0, C + 4, C + 5, C + 3); // r0, g0, b0
+  pwm.config_pins(1, C + 1, C + 2, C + 0); // r1, g1, b1
+  pwm.config_pins(2, D + 6, D + 7, D + 5); // r2, g2, b2
+  pwm.config_pins(3, B + 4, B + 5, B + 3); // r3, g3, b3
+  pwm.config_pins(4, B + 1, B + 2, B + 0); // r4, g4, b4
+  pwm.config_pins(5, D + 3, D + 4, D + 2); // r5, g5, b5
+}
+
 // Hook PWM routine into timer 2 compare interrupt
 ISR(TIMER2_COMPA_vect) {
   pwm.isr();
@@ -110,20 +134,7 @@ void set_default(Args);
 void set_rainbow(Args);
 
 void setup() {
-  PWMPins::config_output();
-
-  // Configure mapping from zone/channel to bit within port register
-  //     7  6  5  4  3  2  1  0
-  // B [ -  - g3 r3 b3 g4 r4 b4]
-  // C [ -  - g0 r0 b0 g1 r1 b1]
-  // D [g2 r2 b2 g5 r5 b5  -  -]
-  constexpr auto B = 0, C = 8, D = 16;
-  pwm.config_pins(0, C + 4, C + 5, C + 3); // r0, g0, b0
-  pwm.config_pins(1, C + 1, C + 2, C + 0); // r1, g1, b1
-  pwm.config_pins(2, D + 6, D + 7, D + 5); // r2, g2, b2
-  pwm.config_pins(3, B + 4, B + 5, B + 3); // r3, g3, b3
-  pwm.config_pins(4, B + 1, B + 2, B + 0); // r4, g4, b4
-  pwm.config_pins(5, D + 3, D + 4, D + 2); // r5, g5, b5
+  config_pins();
 
   // Load from EEPROM if valid, otherwise use default
   if (!pwm.load<Serializer>(0)) {
@@ -133,8 +144,7 @@ void setup() {
   PWMTimer::config();
 
   // OPTIONAL Disable Arduino micros interrupt (will break micros/millis/delay/etc!)
-  // Software PWM will work without disabling this, but it causes jitter observable with a scope
-  // I couldn't tell the difference with LEDs, but it might be noticible with motors or audio
+  // Software PWM will work without disabling this, but it causes tiny jitter observable with a scope
   // Feel free to remove this if micros is needed
   MicrosTimer::disable_isr();
 
