@@ -150,16 +150,19 @@ void do_clear(Args);
 void config_channel(Args);
 void set_keyframe(Args);
 void set_period(Args);
+void set_range(Args);
 void measure_isr(Args);
 
 constexpr const char* KEYFRAME_CMD = "keyframe";
 constexpr const char* PERIOD_CMD = "period";
+constexpr const char* RANGE_CMD = "range";
 
 void loop() {
   static const core::cli::Command commands[] = {
     { "config", config_channel },
     { KEYFRAME_CMD, set_keyframe },
     { PERIOD_CMD, set_period },
+    { RANGE_CMD, set_range },
     { "clear", do_clear },
     { "default", set_default },
     { "rainbow", set_rainbow },
@@ -175,6 +178,7 @@ void loop() {
 
 void set_default(Args) {
   pwm.clear_all();
+  pwm.set_range(255);
   constexpr uint8_t TIME = 0;
   pwm.set_keyframe(0, TIME, 255, 0, 191);
   pwm.set_keyframe(1, TIME, 191, 0, 63);
@@ -184,15 +188,26 @@ void set_default(Args) {
   pwm.set_keyframe(5, TIME, 255, 31, 0);
 }
 
-void set_rainbow(Args) {
+void set_rainbow(Args args) {
   pwm.clear_all();
-  pwm.set_period(1500); // Loop every 6 seconds
+  // Range affects the period of the PWM signal; smaller range results in higher frequency
+  uint8_t range;
+  if (args.has_next()) {
+    range = atoi(args.next());
+    pwm.set_range(range);
+  } else {
+    range = pwm.get_range();
+  }
+  // 250 ticks is 1 second when range is 255
+  // TODO maybe set_period/keyframe should take float seconds?
+  uint16_t ticks = 100 * 255 / range; // 0.4 seconds
+  pwm.set_period(15 * ticks); // Loop every 6 seconds
   for (uint8_t i = 0; i < 6; ++i) {
-    // Cycle from red to green to blue with 500 ticks (2 seconds) between each
-    // Offset each zone by 100 ticks (0.4 seconds)
-    pwm.set_keyframe(i, 0 + i * 100, 255, 0, 0); // Red
-    pwm.set_keyframe(i, 500 + i * 100, 0, 255, 0); // Green
-    pwm.set_keyframe(i, 1000 + i * 100, 0, 0, 255); // Blue
+    // Cycle from red to green to blue with 2 seconds between each
+    // Offset each zone by 0.4 seconds
+    pwm.set_keyframe(i, 0 + i * ticks, range, 0, 0); // Red
+    pwm.set_keyframe(i, (5 + i) * ticks, 0, range, 0); // Green
+    pwm.set_keyframe(i, (10 + i) * ticks, 0, 0, range); // Blue
   }
 }
 
@@ -226,6 +241,10 @@ void set_period(Args args) {
   pwm.set_period(atoi(args.next()));
 }
 
+void set_range(Args args) {
+  pwm.set_range(atoi(args.next()));
+}
+
 template <typename T>
 void print_list(const T value) {
   serialEx.println(value);
@@ -240,6 +259,7 @@ void print_list(const T value, const Args... args) {
 
 void do_list(Args args) {
   print_list(PERIOD_CMD, pwm.get_period());
+  print_list(RANGE_CMD, pwm.get_range());
 
   for (uint8_t zone = 0; zone < N_ZONES; ++zone) {
     uint16_t time;
