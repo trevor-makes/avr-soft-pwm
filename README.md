@@ -4,13 +4,13 @@
 - Use every GPIO pin for interrupt-driven 8-bit PWM
 - Keyframe animation using linear interpolation
 
-The built-in hardware PWM ([pulse-width modulation](https://en.wikipedia.org/wiki/Pulse-width_modulation)) feature of AVR microcontrollers allows certain GPIO pins to be pulsed by a hardware timer, approximating an analog signal proportional to how long a pin is held high or low (duty cycle). The duty cycle is first set by software (the `analogWrite` function from the Arduino API), then the timer will continue to pulse the pin independent of CPU activity.
-
 ![](images/freq_and_duty.png)
 
-The ATmega328p (Arduino Nano/Uno) has 3 timers that can drive up to 6 PWM outputs, suitable for 2 strips of RGB LEDs. But what about the other 12 GPIO pins?
+The built-in hardware [PWM](https://en.wikipedia.org/wiki/Pulse-width_modulation) feature of AVR microcontrollers allows certain GPIO pins to be pulsed by a hardware timer, approximating an analog signal proportional to how long a pin is held high or low (duty cycle). After the duty cycle is configured by software (the `analogWrite` function from the Arduino API), the timer will continually pulse the pin independent of other CPU activity. The ATmega328p (Arduino Nano/Uno) has 3 timers that can generate 2 PWM outputs each, for a total of 6: enough to drive 2 strips of RGB LEDs. But what about the other 12 GPIO pins?
 
-By careful use of timer interrupts and low-level GPIO control, we can instead use software to generate PWM signals on _any_ GPIO pin (or all at once). With 18 free GPIO pins (reserving D0/D1 for serial Tx/Rx), an Arduino Nano/Uno can drive 6 fully independent strings of RGB lights.
+The AVR timer units can also be configured to call an interrupt function after a programmable delay. When the timer is ready, whatever code is running will pause and the CPU will jump to the interrupt function, resuming the previous code after the function returns. The Arduino library uses this feature to keep track of time for the `millis` function. Operating systems on desktop computers use similar timers to switch between software threads.
+
+By keeping a list of all GPIO pins, sorted by the desired duty cycle, we can set the timer so it continually wakes up when the next pin(s) needs to change state and then reprogram itself for the next pin after that. Once this is configured, it will run fully in the background, transparent to whatever code is running in the microcontroller loop. With 18 free GPIO pins (reserving D0/D1 for serial Tx/Rx), our Arduino Nano/Uno can now drive 6 fully independent strings of RGB lights.
 
 ## Building the example program
 
