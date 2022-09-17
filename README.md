@@ -26,6 +26,8 @@ Distributed under the [MIT license](LICENSE.txt)
 
 ## Assembling the example circuit
 
+ULN2003 Darlington transistor arrays are used for driving common anode LED strips. When an input pin is set high by the Arduino, the corresponding output pin becomes a low resistance path to ground (open collector) which allows current to flow from the 12 V power supply through the LEDs and ULN2003 but _not_ through the Arduino. Other types of LEDs or loads may require different drivers, amplifiers, or relays.
+
 ![](images/schematic.png)
 
 ![](images/breadboard.jpg)
