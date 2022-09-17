@@ -12,8 +12,6 @@ The ATmega328p (Arduino Nano/Uno) has 3 timers that can drive up to 6 PWM output
 
 By careful use of timer interrupts and low-level GPIO control, we can instead use software to generate PWM signals on _any_ GPIO pin (or all at once). With 18 free GPIO pins (reserving D0/D1 for serial Tx/Rx), an Arduino Nano/Uno can drive 6 fully independent strings of RGB lights.
 
-Distributed under the [MIT license](LICENSE.txt)
-
 ## Building the example program
 
 Use the [PlatformIO](https://platformio.org/) plugin for [VSCode](https://code.visualstudio.com/).
@@ -21,6 +19,10 @@ Use the [PlatformIO](https://platformio.org/) plugin for [VSCode](https://code.v
 Open the project folder with VSCode, select the environment for your board (`uno`, `nano`, `oldnano`), and click `Upload`.
 
 ![](images/platformio.png)
+
+The [core](https://github.com/trevor-makes/core) library is required and PlatformIO will download this into the `.pio` folder.
+
+Distributed under the [MIT license](LICENSE.txt)
 
 ## Assembling the example circuit
 
@@ -164,13 +166,3 @@ void loop() {
   ...
 }
 ```
-
-## Dependencies
-
-The following dependencies will be downloaded by PlatformIO at build time:
-
-- [core](https://github.com/trevor-makes/core)
-
-## Contributors
-
-[Trevor Makes](mailto:the.trevor.makes@gmail.com)
