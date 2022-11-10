@@ -132,6 +132,7 @@ struct MicrosTimer {
 
 void set_default(Args);
 void set_rainbow(Args);
+void set_white(Args);
 
 void setup() {
   config_pins();
@@ -176,6 +177,7 @@ void loop() {
     { "clear", do_clear },
     { "default", set_default },
     { "rainbow", set_rainbow },
+    { "white", set_white },
     { "list", do_list },
     { "save", do_save },
     { "load", do_load },
@@ -186,11 +188,21 @@ void loop() {
   serialCli.run_once(commands, []() { pwm.update(); });
 }
 
+uint8_t get_range(Args& args) {
+  if (args.has_next()) {
+    uint8_t range = atoi(args.next());
+    pwm.set_range(range);
+    return range;
+  } else {
+    return pwm.get_range();
+  }
+}
+
 void set_default(Args) {
   pwm.clear_all();
   pwm.set_range(255);
   constexpr uint8_t TIME = 0;
-  pwm.set_keyframe(0, TIME, 255, 0, 191);
+  pwm.set_keyframe(0, TIME, 255, 0, 127);
   pwm.set_keyframe(1, TIME, 191, 0, 63);
   pwm.set_keyframe(2, TIME, 191, 31, 63);
   pwm.set_keyframe(3, TIME, 191, 63, 63);
@@ -201,23 +213,27 @@ void set_default(Args) {
 void set_rainbow(Args args) {
   pwm.clear_all();
   // Range affects the period of the PWM signal; smaller range results in higher frequency
-  uint8_t range;
-  if (args.has_next()) {
-    range = atoi(args.next());
-    pwm.set_range(range);
-  } else {
-    range = pwm.get_range();
-  }
-  // 250 ticks is 1 second when range is 255
+  uint8_t range = get_range(args);
+  // 245 ticks is 1 second when range is 255
   // TODO maybe set_period/keyframe should take float seconds?
-  uint16_t ticks = 100 * 255 / range; // 0.4 seconds
+  uint16_t ticks = 98 * 255 / range; // 98 ticks is 0.4 seconds
   pwm.set_period(15 * ticks); // Loop every 6 seconds
   for (uint8_t i = 0; i < 6; ++i) {
     // Cycle from red to green to blue with 2 seconds between each
     // Offset each zone by 0.4 seconds
-    pwm.set_keyframe(i, 0 + i * ticks, range, 0, 0); // Red
+    pwm.set_keyframe(i, (0 + i) * ticks, range, 0, 0); // Red
     pwm.set_keyframe(i, (5 + i) * ticks, 0, range, 0); // Green
     pwm.set_keyframe(i, (10 + i) * ticks, 0, 0, range); // Blue
+  }
+}
+
+void set_white(Args args) {
+  pwm.clear_all();
+  // Range affects the period of the PWM signal; smaller range results in higher frequency
+  uint8_t range = get_range(args);
+  for (uint8_t i = 0; i < 6; ++i) {
+    // TODO adjustable color temperature, maybe lerp over [range/2, range]
+    pwm.set_keyframe(i, 0, range, range >> 1, range >> 1);
   }
 }
 
