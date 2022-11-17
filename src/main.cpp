@@ -133,6 +133,7 @@ struct MicrosTimer {
 void set_default(Args);
 void set_rainbow(Args);
 void set_white(Args);
+void set_sweep(Args);
 
 void setup() {
   config_pins();
@@ -178,6 +179,7 @@ void loop() {
     { "default", set_default },
     { "rainbow", set_rainbow },
     { "white", set_white },
+    { "sweep", set_sweep },
     { "list", do_list },
     { "save", do_save },
     { "load", do_load },
@@ -234,6 +236,27 @@ void set_white(Args args) {
   for (uint8_t i = 0; i < 6; ++i) {
     // TODO adjustable color temperature, maybe lerp over [range/2, range]
     pwm.set_keyframe(i, 0, range, range >> 1, range >> 1);
+  }
+}
+
+void set_sweep(Args args) {
+  uint8_t red[6];
+  uint8_t green[6];
+  uint8_t blue[6];
+  for (uint8_t i = 0; i < 6; ++i) {
+    uint16_t time;
+    pwm.get_keyframe(i, 0, time, red[i], green[i], blue[i]);
+  }
+  pwm.clear_all();
+  for (uint8_t i = 0; i < 6; ++i) {
+    pwm.set_keyframe(i, 0, red[i], green[i], blue[i]);
+    pwm.set_keyframe(i, 50, 0, 0, 0);
+    pwm.set_keyframe(i, 75 * (i + 1), 0, 0, 0);
+    pwm.set_keyframe(i, 1 + 75 * (i + 1), red[i], green[i], blue[i]);
+    pwm.set_keyframe(i, 75 * (i + 2), red[i], green[i], blue[i]);
+    pwm.set_keyframe(i, 1 + 75 * (i + 2), 0, 0, 0);
+    pwm.set_keyframe(i, 25 + 75 * (5 + 2), 0, 0, 0);
+    pwm.set_keyframe(i, 75 + 75 * (5 + 2), red[i], green[i], blue[i]);
   }
 }
 
