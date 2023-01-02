@@ -32,6 +32,8 @@ ULN2003 Darlington transistor arrays are used for driving common anode LED strip
 
 ![](images/breadboard.jpg)
 
+![](images/perfboard.jpg)
+
 ## Using the example program
 
 After building and uploading the program to the Arduino, connect a serial monitor such as the one included with PlatformIO. A '>' should appear as a prompt for input. The following commands are available:
