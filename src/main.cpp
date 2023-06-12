@@ -165,29 +165,25 @@ void set_period(Args);
 void set_range(Args);
 void measure_isr(Args);
 
-constexpr const char* KEYFRAME_CMD = "keyframe";
-constexpr const char* PERIOD_CMD = "period";
-constexpr const char* RANGE_CMD = "range";
-
 void loop() {
   static const core::cli::Command commands[] = {
-    { "config", config_channel },
-    { KEYFRAME_CMD, set_keyframe },
-    { PERIOD_CMD, set_period },
-    { RANGE_CMD, set_range },
-    { "clear", do_clear },
-    { "default", set_default },
-    { "rainbow", set_rainbow },
-    { "white", set_white },
-    { "sweep", set_sweep },
-    { "list", do_list },
-    { "save", do_save },
-    { "load", do_load },
-    { "measure", measure_isr },
+    { F("config"), config_channel },
+    { F("keyframe"), set_keyframe },
+    { F("period"), set_period },
+    { F("range"), set_range },
+    { F("clear"), do_clear },
+    { F("default"), set_default },
+    { F("rainbow"), set_rainbow },
+    { F("white"), set_white },
+    { F("sweep"), set_sweep },
+    { F("list"), do_list },
+    { F("save"), do_save },
+    { F("load"), do_load },
+    { F("measure"), measure_isr },
   };
 
   // Update PWM animation while waiting for CLI input
-  serialCli.run_once(commands, []() { pwm.update(); });
+  serialCli.prompt(commands, []() { pwm.update(); });
 }
 
 uint8_t get_range(Args& args) {
@@ -307,8 +303,8 @@ void print_list(const T value, const Args... args) {
 }
 
 void do_list(Args args) {
-  print_list(PERIOD_CMD, pwm.get_period());
-  print_list(RANGE_CMD, pwm.get_range());
+  print_list(F("period"), pwm.get_period());
+  print_list(F("range"), pwm.get_range());
 
   for (uint8_t zone = 0; zone < N_ZONES; ++zone) {
     uint16_t time;
@@ -317,7 +313,7 @@ void do_list(Args args) {
     // Loop over each keyframe
     uint8_t i = 0;
     while (pwm.get_keyframe(zone, i++, time, red, green, blue)) {
-      print_list(KEYFRAME_CMD, zone, time, red, green, blue);
+      print_list(F("keyframe"), zone, time, red, green, blue);
     }
   }
 }
